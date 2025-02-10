@@ -9,11 +9,13 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m = types.Model()
   m.nq = mjm.nq
   m.nv = mjm.nv
+  m.na = mjm.na
   m.nbody = mjm.nbody
   m.njnt = mjm.njnt
   m.ngeom = mjm.ngeom
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
+  m.timestep = mjm.opt.timestep
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=2)
 
   # body_bfs is BFS ordering of body ids
@@ -66,6 +68,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
 def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
+  d.time = 0.0
 
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
@@ -87,12 +90,17 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.cdof = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
   d.crb = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   d.qM = wp.zeros((nworld, mjm.nM), dtype=wp.float32)
+  d.qacc = wp.zeros((nworld, mjm.nq), dtype=wp.float32)
+  d.act_dot = wp.zeros((nworld, mjm.na), dtype=wp.float32)
+  d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.act = wp.zeros((nworld, mjm.na), dtype=wp.float32)
 
   return d
 
 def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
+  d.time = mjd.time
 
   # TODO(erikfrey): would it be better to tile on the gpu?
   tile_fn = lambda x: np.tile(x, (nworld,) + (1,) * len(x.shape))
@@ -116,5 +124,9 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.cdof = wp.array(tile_fn(mjd.cdof), dtype=wp.spatial_vector, ndim=2)
   d.crb = wp.array(tile_fn(mjd.crb), dtype=types.vec10, ndim=2)
   d.qM = wp.array(tile_fn(mjd.qM), dtype=wp.float32, ndim=2)
+  d.qacc = wp.array(tile_fn(mjd.qacc), dtype=wp.float32, ndim=2)
+  d.act_dot = wp.array(tile_fn(mjd.act_dot), dtype=wp.float32, ndim=2)
+  d.qvel = wp.array(tile_fn(mjd.qvel), dtype=wp.float32, ndim=2)
+  d.act = wp.array(tile_fn(mjd.act), dtype=wp.float32, ndim=2)
 
   return d
