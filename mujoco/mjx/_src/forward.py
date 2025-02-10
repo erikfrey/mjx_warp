@@ -32,43 +32,36 @@ WarpMjMinVal = wp.constant(1e-15)
 
 @wp.kernel
 def next_activation(
-    acts_: wp.array2d(dtype=wp.float32),
-    acts_dot_: wp.array2d(dtype=wp.float32),
-    acts_limited: wp.array(dtype=wp.uint8),
-    acts_range: wp.array(dtype=wp.float32, ndim=2),
-    acts_adr: wp.array(dtype=wp.int32),
-    acts_dynType: wp.array(dtype=wp.int32),
-    acts_dynPrm: wp.array(dtype=wp.float32, ndim=2),
-    timestep: wp.float32,
+    m: types.Model, d: types.Data
 ):
   worldId, tid = wp.tid()
 
   # get the high/low range for each actuator state
-  limited = acts_limited[tid]
-  range_low = wp.select(limited, -wp.inf, acts_range[tid, 0])
-  range_high = wp.select(limited, wp.inf, acts_range[tid, 1])
+  limited = m.actuator_actlimited[tid]
+  range_low = wp.select(limited, -wp.inf, m.actuator_actrange[tid, 0])
+  range_high = wp.select(limited, wp.inf, m.actuator_actrange[tid, 1])
 
   # get the actual actuation - skip if -1 (means stateless actuator)
-  act_adr = acts_adr[tid]
+  act_adr = m.actuator_actadr[tid]
   if act_adr == -1:
     return
   
-  acts = acts_[worldId]
-  acts_dot = acts_dot_[worldId]
+  acts = d.act[worldId]
+  acts_dot = d.act_dot[worldId]
 
   act = acts[act_adr]
   act_dot = acts_dot[act_adr]
 
   # check dynType
-  dyn_type = acts_dynType[tid]
-  dyn_prm = acts_dynPrm[tid, 0]
+  dyn_type = m.actuator_dyntype[tid]
+  dyn_prm = m.actuator_dynprm[tid, 0]
 
   # advance the actuation
   if dyn_type == 3: #wp.static(WarpDynType.FILTEREXACT):
     tau = wp.select(dyn_prm < wp.static(WarpMjMinVal), dyn_prm, wp.static(WarpMjMinVal))
-    act = act + act_dot * tau * (1.0 - wp.exp(-timestep / tau))
+    act = act + act_dot * tau * (1.0 - wp.exp(-m.timestep / tau))
   else:
-    act = act + act_dot * timestep
+    act = act + act_dot * m.timestep
 
   # apply limits
   wp.clamp(act, range_low, range_high)
@@ -78,36 +71,29 @@ def next_activation(
 
 @wp.kernel
 def advance_velocities(
-    qvel: wp.array2d(dtype=wp.float32),
-    qacc: wp.array2d(dtype=wp.float32),
-    timestep: wp.float32,
+    m: types.Model, d: types.Data
 ):
   worldId, tid = wp.tid()
-  qvel[worldId, tid] = qvel[worldId, tid] + qacc[worldId, tid] * timestep
+  d.qvel[worldId, tid] = d.qvel[worldId, tid] + d.qacc[worldId, tid] * m.timestep
 
 
 @wp.kernel
 def integrate_joint_positions(
-    jnt_types: wp.array(dtype=wp.int32),
-    jnt_qposadr: wp.array(dtype=wp.int32),
-    jnt_dofadr: wp.array(dtype=wp.int32),
-    timestep: wp.float32,
-    qvel_: wp.array2d(dtype=wp.float32),
-    qpos_: wp.array2d(dtype=wp.float32),
+    m: types.Model, d: types.Data
 ):
   worldId, tid = wp.tid()
 
-  jnt_type = jnt_types[tid]
-  qpos_adr = jnt_qposadr[tid]
-  dof_adr = jnt_dofadr[tid]
-  qpos = qpos_[worldId]
-  qvel = qvel_[worldId]
+  jnt_type = m.jnt_type[tid]
+  qpos_adr = m.jnt_qposadr[tid]
+  dof_adr = m.jnt_dofadr[tid]
+  qpos = d.qpos[worldId]
+  qvel = d.qvel[worldId]
 
   if jnt_type == 0: #wp.static(WarpJointType.FREE):
     qpos_pos = wp.vec3(qpos[qpos_adr], qpos[qpos_adr + 1], qpos[qpos_adr + 2])
     qvel_lin = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
-    qpos_new = qpos_pos + timestep * qvel_lin
+    qpos_new = qpos_pos + m.timestep * qvel_lin
 
     qpos_quat = wp.vec4(
         qpos[qpos_adr + 3],
@@ -117,7 +103,7 @@ def integrate_joint_positions(
     )
     qvel_ang = wp.vec3(qvel[dof_adr + 3], qvel[dof_adr + 4], qvel[dof_adr + 5])
 
-    qpos_quat_new = quat_integrate_wp(qpos_quat, qvel_ang, timestep)
+    qpos_quat_new = quat_integrate_wp(qpos_quat, qvel_ang, m.timestep)
 
     qpos[qpos_adr] = qpos_new[0]
     qpos[qpos_adr + 1] = qpos_new[1]
@@ -136,7 +122,7 @@ def integrate_joint_positions(
     )
     qvel_ang = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
-    qpos_quat_new = quat_integrate_wp(qpos_quat, qvel_ang, timestep)
+    qpos_quat_new = quat_integrate_wp(qpos_quat, qvel_ang, m.timestep)
 
     qpos[qpos_adr] = qpos_quat_new[0]
     qpos[qpos_adr + 1] = qpos_quat_new[1]
@@ -144,38 +130,36 @@ def integrate_joint_positions(
     qpos[qpos_adr + 3] = qpos_quat_new[3]
 
   else:  # if jnt_type in (JointType.HINGE, JointType.SLIDE):
-    qpos[qpos_adr] = qpos[qpos_adr] + timestep * qvel[dof_adr]
+    qpos[qpos_adr] = qpos[qpos_adr] + m.timestep * qvel[dof_adr]
 
 
 
 def advance(
     m: types.Model, d: types.Data,
-    act_dot: wp.array,
-    qacc: wp.array,
+    act_dot: Optional[wp.array] = None,
+    qacc: Optional[wp.array] = None,
     qvel: Optional[wp.array] = None,
 ) -> types.Data:
   """Advance state and time given activation derivatives and acceleration."""
   # skip if no stateful actuators.
+
+  if act_dot is None:
+    act_dot = d.act_dot
+
+  if qacc is None:
+    qacc = d.qacc
+
   if m.na:
     # warp implementation of next activation - per actuator
     wp.launch(
         kernel=next_activation,
         dim=(d.nworld, m.nu),
-        inputs=[
-            d.act,  # (na)
-            act_dot,  # (na)
-            m.actuator_actlimited,  # (nu)
-            m.actuator_actrange,  # (nu, 2)
-            m.actuator_actadr,  # (nu)
-            m.actuator_dyntype,  # (nu)
-            m.actuator_dynprm,  # (nu, 10)
-            m.timestep,  # todo switch to warp model
-        ],
+        inputs=[m, d],
     )
 
   # warp implementation of velocity advancement - per dof
   wp.launch(
-      kernel=advance_velocities, dim=(d.nworld, m.nv), inputs=[d.qvel, qacc, m.timestep]
+      kernel=advance_velocities, dim=(d.nworld, m.nv), inputs=[m, d]
   )
 
   # advance positions with qvel if given, d.qvel otherwise (semi-implicit)
@@ -188,14 +172,7 @@ def advance(
   wp.launch(
       kernel=integrate_joint_positions,
       dim=(d.nworld, m.njnt),
-      inputs=[
-          m.jnt_type,
-          m.jnt_qposadr,
-          m.jnt_dofadr,
-          m.timestep,
-          qvel_in,
-          d.qpos,
-      ],
+      inputs=[m, d],
   )
 
   d.time = d.time + m.timestep
