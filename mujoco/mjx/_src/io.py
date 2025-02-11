@@ -76,6 +76,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_parentid = wp.array(mjm.dof_parentid, dtype=wp.int32, ndim=1)
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
+  m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
 
   return m
 
@@ -111,6 +112,10 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.act = wp.zeros((nworld, mjm.na), dtype=wp.float32)
   d.qLD = wp.zeros((nworld, mjm.nM), dtype=wp.float32)
   d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_eulerdamp = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qacc_eulerdamp = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
 
   return d
 
@@ -148,5 +153,11 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.act = wp.array(tile_fn(mjd.act), dtype=wp.float32, ndim=2)
   d.qLD = wp.array(tile_fn(mjd.qLD), dtype=wp.float32, ndim=2)
   d.qLDiagInv = wp.array(tile_fn(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
+  d.qfrc_smooth = wp.array(tile_fn(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
+  d.qfrc_constraint = wp.array(tile_fn(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
+
+  # warp only temp arrays
+  d.qfrc_eulerdamp = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qacc_eulerdamp = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
 
   return d

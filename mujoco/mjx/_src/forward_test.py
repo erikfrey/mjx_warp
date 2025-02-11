@@ -22,7 +22,7 @@ class ForwardTest(absltest.TestCase):
     path = epath.resource_path('mujoco.mjx') / 'test_data/constraints.xml'
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     # disable euler damp
-    mjm.opt.disableflags = mjm.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_EULERDAMP
+    #mjm.opt.disableflags = mjm.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_EULERDAMP
 
     mjd = mujoco.MjData(mjm)
     # apply some control and xfrc input
@@ -36,7 +36,7 @@ class ForwardTest(absltest.TestCase):
     d = mjx.put_data(mjm, mjd)
 
     # euler
-    mjx.advance(m, d, d.act_dot, d.qacc)
+    mjx.euler(m, d)
     mujoco.mj_Euler(mjm, mjd)
     _assert_eq(d.act.numpy()[0], mjd.act, 'act')
     _assert_eq(d.qpos.numpy()[0], mjd.qpos, 'qpos')

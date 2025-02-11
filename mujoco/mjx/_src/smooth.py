@@ -258,3 +258,33 @@ def factor_m(m: types.Model, d: types.Data):
     wp.launch(qLD_acc, dim=(d.nworld, size), inputs=[m, d, adr])
   
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, d])
+
+def solve_m(m: types.Model, d: types.Data, x: wp.array) -> wp.array:
+  """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
+
+  # TODO AD support dense
+
+  updates_i, updates_j = {}, {}
+  for i in range(m.nv):
+    madr_ij, j = m.dof_Madr[i], i
+    while True:
+      madr_ij, j = madr_ij + 1, m.dof_parentid[j]
+      if j == -1:
+        break
+      updates_i.setdefault(depth[i], []).append((i, madr_ij, j))
+      updates_j.setdefault(depth[j], []).append((j, madr_ij, i))
+
+  # x <- inv(L') * x
+  for _, vals in sorted(updates_j.items(), reverse=True):
+    j, madr_ij, i = np.array(vals).T
+    x = x.at[j].add(-d.qLD[madr_ij] * x[i])
+
+  # x <- inv(D) * x
+  x = x * d.qLDiagInv
+
+  # x <- inv(L) * x
+  for _, vals in sorted(updates_i.items()):
+    i, madr_ij, j = np.array(vals).T
+    x = x.at[i].add(-d.qLD[madr_ij] * x[j])
+
+  return x

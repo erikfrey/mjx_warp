@@ -2,6 +2,7 @@ import warp as wp
 from . import types
 from typing import Optional
 from . import math
+from . import smooth
 
 @wp.func
 def quat_integrate_wp(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
@@ -120,8 +121,6 @@ def integrate_joint_positions(
   else:  # if jnt_type in (JointType.HINGE, JointType.SLIDE):
     qpos[qpos_adr] = qpos[qpos_adr] + m.timestep * qvel[dof_adr]
 
-
-
 def advance(
     m: types.Model, d: types.Data,
     act_dot: Optional[wp.array] = None,
@@ -166,3 +165,29 @@ def advance(
   d.time = d.time + m.timestep
 
   return d
+
+def euler(m: types.Model, d: types.Data) -> types.Data:
+  """Euler integrator, semi-implicit in velocity."""
+  # integrate damping implicitly
+
+  @wp.kernel
+  def add_damping(m: types.Model, d: types.Data):
+    worldId, tid = wp.tid()
+    dof_Madr = m.dof_Madr[tid]
+    d.qM[worldId, dof_Madr] += m.timestep * m.dof_damping[dof_Madr]
+
+  @wp.kernel
+  def sum_qfrc(m: types.Model, d: types.Data):
+    worldId, tid = wp.tid()
+    d.qfrc_eulerdamp[worldId, tid] = d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
+
+  wp.copy(d.qacc_eulerdamp, d.qacc)
+  #if not m.opt.disableflags & DisableBit.EULERDAMP:
+  if True:
+    # TODO AD: support for dense
+    wp.launch(add_damping, dim=(d.nworld, m.nM), inputs = [m, d])
+    wp.launch(sum_qfrc, dim=(d.nworld, m.nv), inputs=[m, d])
+    
+    smooth.factor_m(m, d)
+    d.qacc_eulerdamp = smooth.solve_m(m, d, d.qfrc_eulerdamp)
+  return advance(m, d, d.act_dot, d.qacc_eulerdamp)
