@@ -7,5 +7,6 @@ from ._src.forward import advance
 from ._src.smooth import kinematics
 from ._src.smooth import com_pos
 from ._src.smooth import crb
+from ._src.smooth import factor_m
 from ._src.test_util import benchmark
 from ._src.types import *

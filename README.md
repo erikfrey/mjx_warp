@@ -71,6 +71,19 @@ mjx-testspeed --function=crb --mjcf=humanoid/humanoid.xml --batch_size=8192
 | Pure JAX         | 8192       |  37M            |
 | Warp             | 8192       |  95M           |
 
+## factor_m
+
+```bash
+mjx-testspeed --function=factor_m --mjcf=humanoid/humanoid.xml --batch_size=8192
+```
+
+| Implementation   | Format | Batch Size |  Steps / Second |
+| ---------------- | ------ | ---------- | --------------- |
+| Pure JAX         | Sparse | 8192       |  17M            |
+| Warp             | Sparse | 8192       |  33M            |
+| Pure JAX         | Dense  | 8192       |  41M            |
+| CUDA (cuSOLVER)  | Dense  | 8192       |  50M            |
+
 # Ideas for what to try next
 
 ## 1. Unroll steps

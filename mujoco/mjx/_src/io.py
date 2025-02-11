@@ -16,27 +16,41 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
   m.timestep = mjm.opt.timestep
+  m.nM = mjm.nM
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=2)
 
-  # body_bfs is BFS ordering of body ids
-  # level_beg, level_end specify the bounds of level ranges in body_bfs
-  level_beg, level_end, body_bfs = [], [], []
-  parents = {0}
-  while len(body_bfs) < m.nbody - 1:
-    children = [i for i, p in enumerate(mjm.body_parentid) if p in parents and i != 0]
-    if not children:
-      raise ValueError("invalid tree layout")
-    level_beg.append(len(body_bfs))
-    body_bfs.extend(children)
-    level_end.append(len(body_bfs))
-    parents = set(children)
+  # body_tree is BFS ordering of body ids
+  body_tree, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
+  for i in range(mjm.nbody):
+    body_depth[i] = body_depth[mjm.body_parentid[i]] + 1
+    body_tree.setdefault(body_depth[i], []).append(i)
+  # body_leveladr, body_levelsize specify the bounds of level ranges in body_level
+  body_levelsize = np.array([len(body_tree[i]) for i in range(len(body_tree))])
+  body_leveladr = np.cumsum(np.insert(body_levelsize, 0, 0))[:-1]
+  body_tree = sum([body_tree[i] for i in range(len(body_tree))], [])
 
-  m.nlevel = len(level_beg)
-  m.level_beg = wp.array(level_beg, dtype=wp.int32, ndim=1)
-  m.level_beg_cpu = wp.array(level_beg, dtype=wp.int32, ndim=1, device='cpu')
-  m.level_end = wp.array(level_end, dtype=wp.int32, ndim=1)
-  m.level_end_cpu = wp.array(level_end, dtype=wp.int32, ndim=1, device='cpu')
-  m.body_bfs = wp.array(body_bfs, dtype=wp.int32, ndim=1)
+  # track qLD updates for factor_m
+  qLD_updates, dof_depth = {}, np.zeros(mjm.nv, dtype=int) - 1
+  for k in range(mjm.nv):
+    dof_depth[k] = dof_depth[mjm.dof_parentid[k]] + 1
+    i = mjm.dof_parentid[k]
+    Madr_ki = mjm.dof_Madr[k] + 1
+    while i > -1:
+      qLD_updates.setdefault(dof_depth[i], []).append((i, k, Madr_ki))
+      i = mjm.dof_parentid[i]
+      Madr_ki += 1
+
+  # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in qLD updates
+  qLD_levelsize = np.array([len(qLD_updates[i]) for i in range(len(qLD_updates))])
+  qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
+  qLD_updates = np.array(sum([qLD_updates[i] for i in range(len(qLD_updates))], []))
+
+  m.body_leveladr = wp.array(body_leveladr, dtype=wp.int32, ndim=1, device="cpu")
+  m.body_levelsize = wp.array(body_levelsize, dtype=wp.int32, ndim=1, device="cpu")
+  m.body_tree = wp.array(body_tree, dtype=wp.int32, ndim=1)
+  m.qLD_leveladr = wp.array(qLD_leveladr, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_levelsize = wp.array(qLD_levelsize, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_updates = wp.array(qLD_updates, dtype=wp.vec3i, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
   m.body_jntnum = wp.array(mjm.body_jntnum, dtype=wp.int32, ndim=1)
   m.body_parentid = wp.array(mjm.body_parentid, dtype=wp.int32, ndim=1)
@@ -64,6 +78,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
 
   return m
+
 
 def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d = types.Data()
@@ -94,8 +109,11 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.act_dot = wp.zeros((nworld, mjm.na), dtype=wp.float32)
   d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.act = wp.zeros((nworld, mjm.na), dtype=wp.float32)
+  d.qLD = wp.zeros((nworld, mjm.nM), dtype=wp.float32)
+  d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
 
   return d
+
 
 def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.Data:
   d = types.Data()
@@ -128,5 +146,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.act_dot = wp.array(tile_fn(mjd.act_dot), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile_fn(mjd.qvel), dtype=wp.float32, ndim=2)
   d.act = wp.array(tile_fn(mjd.act), dtype=wp.float32, ndim=2)
+  d.qLD = wp.array(tile_fn(mjd.qLD), dtype=wp.float32, ndim=2)
+  d.qLDiagInv = wp.array(tile_fn(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
 
   return d

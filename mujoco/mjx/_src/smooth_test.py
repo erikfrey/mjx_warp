@@ -19,8 +19,7 @@ def _assert_eq(a, b, name):
 
 class SmoothTest(absltest.TestCase):
 
-  def test_kinematics(self):
-    """Tests MJX kinematics."""
+  def _humanoid(self):
     path = epath.resource_path('mujoco.mjx') / 'test_data/humanoid/humanoid.xml'
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjd = mujoco.MjData(mjm)
@@ -28,6 +27,11 @@ class SmoothTest(absltest.TestCase):
     mujoco.mj_forward(mjm, mjd)
     m = mjx.put_model(mjm)
     d = mjx.put_data(mjm, mjd)
+    return mjm, mjd, m, d
+
+  def test_kinematics(self):
+    """Tests MJX kinematics."""
+    _, mjd, m, d = self._humanoid()
 
     for arr in (d.xanchor, d.xaxis, d.xquat, d.xpos):
       arr.zero_()
@@ -41,13 +45,7 @@ class SmoothTest(absltest.TestCase):
 
   def test_com_pos(self):
     """Tests MJX com_pos."""
-    path = epath.resource_path('mujoco.mjx') / 'test_data/humanoid/humanoid.xml'
-    mjm = mujoco.MjModel.from_xml_path(path.as_posix())
-    mjd = mujoco.MjData(mjm)
-    mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
-    mujoco.mj_forward(mjm, mjd)
-    m = mjx.put_model(mjm)
-    d = mjx.put_data(mjm, mjd)
+    _, mjd, m, d = self._humanoid()
 
     for arr in (d.subtree_com, d.cinert, d.cdof):
       arr.zero_()
@@ -59,25 +57,25 @@ class SmoothTest(absltest.TestCase):
 
   def test_crb(self):
     """Tests MJX crb."""
-    path = epath.resource_path('mujoco.mjx') / 'test_data/humanoid/humanoid.xml'
-    mjm = mujoco.MjModel.from_xml_path(path.as_posix())
-    mjd = mujoco.MjData(mjm)
-    mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
-    mujoco.mj_forward(mjm, mjd)
-    m = mjx.put_model(mjm)
-    d = mjx.put_data(mjm, mjd)
+    _, mjd, m, d = self._humanoid()
 
     for arr in (d.crb,):
       arr.zero_()
 
     mjx.crb(m, d)
-
-    np.set_printoptions(suppress=True, precision=4, linewidth=1000)
-    print(d.crb)
-    print(mjd.crb)
-
     _assert_eq(d.crb.numpy()[0], mjd.crb, 'crb')
     _assert_eq(d.qM.numpy()[0], mjd.qM, 'qM')
+
+  def test_factor_m(self):
+    """Tests MJX factor_m."""
+    _, mjd, m, d = self._humanoid()
+
+    for arr in (d.qLD, d.qLDiagInv):
+      arr.zero_()
+
+    mjx.factor_m(m, d)
+    _assert_eq(d.qLD.numpy()[0], mjd.qLD, 'qLD')
+    _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, 'qLDiagInv')
 
 if __name__ == '__main__':
   wp.init()
