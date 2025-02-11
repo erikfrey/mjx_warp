@@ -1,29 +1,17 @@
 import warp as wp
 from . import types
 from typing import Optional
+from . import math
 
 @wp.func
-def quat_mul_wp(u: wp.vec4, v: wp.vec4) -> wp.vec4:
-  return wp.vec4(
-      u[0] * v[0] - u[1] * v[1] - u[2] * v[2] - u[3] * v[3],
-      u[0] * v[1] + u[1] * v[0] + u[2] * v[3] - u[3] * v[2],
-      u[0] * v[2] - u[1] * v[3] + u[2] * v[0] + u[3] * v[1],
-      u[0] * v[3] + u[1] * v[2] - u[2] * v[1] + u[3] * v[0],
-  )
-
-@wp.func
-def quat_integrate_wp(q: wp.vec4, v: wp.vec3, dt: wp.float32) -> wp.vec4:
+def quat_integrate_wp(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
   """Integrates a quaternion given angular velocity and dt."""
   norm_ = wp.length(v)
   v = wp.normalize(v)  # does that need proper zero gradient handling?
   angle = dt * norm_
 
-  # q_res = axis_angle_to_quat(v, angle)
-  s, c = wp.sin(angle * 0.5), wp.cos(angle * 0.5)
-  q_res = wp.vec4(c, s * v.x, s * v.y, s * v.z)
-
-  # q_res = quat_mul(q, q_res)
-  q_res = quat_mul_wp(q, q_res)
+  q_res = math.axis_angle_to_quat(v, angle)
+  q_res = math.mul_quat(q, q_res)
 
   return wp.normalize(q_res)
 
@@ -89,13 +77,13 @@ def integrate_joint_positions(
   qpos = d.qpos[worldId]
   qvel = d.qvel[worldId]
 
-  if jnt_type == 0: #wp.static(WarpJointType.FREE):
+  if jnt_type == 0: # free joint
     qpos_pos = wp.vec3(qpos[qpos_adr], qpos[qpos_adr + 1], qpos[qpos_adr + 2])
     qvel_lin = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
     qpos_new = qpos_pos + m.timestep * qvel_lin
 
-    qpos_quat = wp.vec4(
+    qpos_quat = wp.quat(
         qpos[qpos_adr + 3],
         qpos[qpos_adr + 4],
         qpos[qpos_adr + 5],
@@ -113,8 +101,8 @@ def integrate_joint_positions(
     qpos[qpos_adr + 5] = qpos_quat_new[2]
     qpos[qpos_adr + 6] = qpos_quat_new[3]
 
-  elif jnt_type == 1: #wp.static(WarpJointType.BALL):
-    qpos_quat = wp.vec4(
+  elif jnt_type == 1: # ball joint
+    qpos_quat = wp.quat(
         qpos[qpos_adr],
         qpos[qpos_adr + 1],
         qpos[qpos_adr + 2],
