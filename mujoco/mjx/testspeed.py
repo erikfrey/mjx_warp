@@ -27,7 +27,7 @@ from mujoco import mjx
 _FUNCTION = flags.DEFINE_enum(
     "function",
     "kinematics",
-    ["kinematics", "com_pos", "crb", "factor_m", "advance"],
+    ["kinematics", "com_pos", "crb", "factor_m", "euler"],
     "the function to run",
 )
 _MJCF = flags.DEFINE_string(
@@ -72,7 +72,7 @@ def _main(argv: Sequence[str]):
       "kinematics": mjx.kinematics,
       "com_pos": mjx.com_pos,
       "crb": mjx.crb,
-      "advance": mjx.advance,
+      "euler": mjx.euler,
       "factor_m": mjx.factor_m,
   }[_FUNCTION.value]
   jit_time, run_time, steps = mjx.benchmark(

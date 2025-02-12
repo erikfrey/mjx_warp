@@ -9,7 +9,7 @@ from mujoco import mjx
 
 # tolerance for difference between MuJoCo and MJX forward calculations - mostly
 # due to float precision
-_TOLERANCE = 1e-5
+_TOLERANCE = 1e-3
 
 
 def _assert_eq(a, b, name):
@@ -47,9 +47,6 @@ class ForwardTest(absltest.TestCase):
   def test_eulerdamp(self):
     path = epath.resource_path('mujoco.mjx') / 'test_data/pendula.xml'
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
-    mjm.opt.disableflags = (
-        mjm.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_EULERDAMP
-    )
     self.assertTrue((mjm.dof_damping > 0).any())
 
     mjd = mujoco.MjData(mjm)

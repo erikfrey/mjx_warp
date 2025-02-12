@@ -300,7 +300,7 @@ def solve_m(
         s -= d.qLD[worldid, madr] * x[worldid, dofid]
         dofid = m.dof_parentid[dofid]
 
-      # to the diagonal directly in here
+      # do the diagonal directly in here
       x[worldid, i] = s * d.qLDiagInv[worldid, i]
 
     # backward substitution

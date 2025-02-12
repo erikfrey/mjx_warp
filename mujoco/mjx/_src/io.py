@@ -118,7 +118,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.cdof = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
   d.crb = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   d.qM = wp.zeros((nworld, mjm.nM), dtype=wp.float32)
-  d.qacc = wp.zeros((nworld, mjm.nq), dtype=wp.float32)
+  d.qacc = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.act_dot = wp.zeros((nworld, mjm.na), dtype=wp.float32)
   d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.act = wp.zeros((nworld, mjm.na), dtype=wp.float32)

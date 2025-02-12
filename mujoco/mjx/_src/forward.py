@@ -128,7 +128,7 @@ def integrate_joint_positions(
     qpos[qpos_adr] = qpos[qpos_adr] + m.timestep * qvel[dof_adr]
 
 
-def advance(
+def _advance(
     m: types.Model,
     d: types.Data,
     act_dot: wp.array,
@@ -176,12 +176,11 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
     )
 
   wp.copy(d.qacc_eulerdamp, d.qacc)
-  # if not m.disable_flags & types.MJ_DSBL_EULERDAMP:
-  if False:
+  if not m.disable_flags & types.MJ_DSBL_EULERDAMP:
     # TODO AD: support for dense
     wp.launch(add_damping, dim=(d.nworld, m.nM), inputs=[m, d])
     wp.launch(sum_qfrc, dim=(d.nworld, m.nv), inputs=[m, d])
 
     smooth.factor_m(m, d)
     d.qacc_eulerdamp = smooth.solve_m(m, d, d.qfrc_eulerdamp)
-  return advance(m, d, d.act_dot, d.qacc_eulerdamp)
+  return _advance(m, d, d.act_dot, d.qacc_eulerdamp)
