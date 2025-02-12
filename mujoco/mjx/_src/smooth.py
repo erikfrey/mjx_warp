@@ -259,32 +259,42 @@ def factor_m(m: types.Model, d: types.Data):
   
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, d])
 
-def solve_m(m: types.Model, d: types.Data, x: wp.array) -> wp.array:
+def solve_m(m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32)) -> wp.array2d(dtype=wp.float32):
   """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
 
   # TODO AD support dense
 
-  updates_i, updates_j = {}, {}
-  for i in range(m.nv):
-    madr_ij, j = m.dof_Madr[i], i
-    while True:
-      madr_ij, j = madr_ij + 1, m.dof_parentid[j]
-      if j == -1:
-        break
-      updates_i.setdefault(depth[i], []).append((i, madr_ij, j))
-      updates_j.setdefault(depth[j], []).append((j, madr_ij, i))
+  @wp.kernel
+  def solve_m_naive(m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32)):
+    worldid = wp.tid()
 
-  # x <- inv(L') * x
-  for _, vals in sorted(updates_j.items(), reverse=True):
-    j, madr_ij, i = np.array(vals).T
-    x = x.at[j].add(-d.qLD[madr_ij] * x[i])
+    # forward substitution
+    for i in range(m.nv):
+        s = x[worldid, i]
 
-  # x <- inv(D) * x
-  x = x * d.qLDiagInv
+        dofid = m.dof_parentid[i]
+        madr = m.dof_Madr[i]
+        while dofid >= 0:
+          madr += 1
+          s -= d.qLD[worldid, madr] * x[worldid, dofid]
+          dofid = m.dof_parentid[dofid]
 
-  # x <- inv(L) * x
-  for _, vals in sorted(updates_i.items()):
-    i, madr_ij, j = np.array(vals).T
-    x = x.at[i].add(-d.qLD[madr_ij] * x[j])
+        # to the diagonal directly in here
+        x[worldid, i] = s * d.qLDiagInv[worldid, i]
+
+    # backward substitution 
+    for i in range(m.nv - 1, -1, -1):
+        s = x[worldid, i]
+
+        dofid = m.dof_parentid[i]
+        madr = m.dof_Madr[i]
+        while dofid >= 0:
+          madr += 1
+          s -= d.qLD[worldid, madr] * x[worldid, dofid]
+          dofid = m.dof_parentid[dofid]
+
+        x[worldid, i] = s
+
+  wp.launch(solve_m_naive, dim=(d.nworld), inputs=[m, d, x])
 
   return x
