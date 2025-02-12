@@ -1,8 +1,11 @@
-import warp as wp
-from . import types
 from typing import Optional
+
+import warp as wp
+
 from . import math
 from . import smooth
+from . import types
+
 
 @wp.func
 def quat_integrate_wp(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
@@ -16,12 +19,13 @@ def quat_integrate_wp(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
 
   return wp.normalize(q_res)
 
+
 WarpMjMinVal = wp.constant(1e-15)
 
 
 @wp.kernel
 def next_activation(
-    m: types.Model, d: types.Data
+    m: types.Model, d: types.Data, act_dot_in: wp.array2d(dtype=wp.float32)
 ):
   worldId, tid = wp.tid()
 
@@ -34,9 +38,9 @@ def next_activation(
   act_adr = m.actuator_actadr[tid]
   if act_adr == -1:
     return
-  
+
   acts = d.act[worldId]
-  acts_dot = d.act_dot[worldId]
+  acts_dot = act_dot_in[worldId]
 
   act = acts[act_adr]
   act_dot = acts_dot[act_adr]
@@ -46,8 +50,10 @@ def next_activation(
   dyn_prm = m.actuator_dynprm[tid, 0]
 
   # advance the actuation
-  if dyn_type == 3: #wp.static(WarpDynType.FILTEREXACT):
-    tau = wp.select(dyn_prm < wp.static(WarpMjMinVal), dyn_prm, wp.static(WarpMjMinVal))
+  if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
+    tau = wp.select(
+        dyn_prm < wp.static(WarpMjMinVal), dyn_prm, wp.static(WarpMjMinVal)
+    )
     act = act + act_dot * tau * (1.0 - wp.exp(-m.timestep / tau))
   else:
     act = act + act_dot * m.timestep
@@ -60,15 +66,15 @@ def next_activation(
 
 @wp.kernel
 def advance_velocities(
-    m: types.Model, d: types.Data
+    m: types.Model, d: types.Data, qacc: wp.array2d(dtype=wp.float32)
 ):
   worldId, tid = wp.tid()
-  d.qvel[worldId, tid] = d.qvel[worldId, tid] + d.qacc[worldId, tid] * m.timestep
+  d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.timestep
 
 
 @wp.kernel
 def integrate_joint_positions(
-    m: types.Model, d: types.Data
+    m: types.Model, d: types.Data, qvel_in: wp.array2d(dtype=wp.float32)
 ):
   worldId, tid = wp.tid()
 
@@ -76,9 +82,9 @@ def integrate_joint_positions(
   qpos_adr = m.jnt_qposadr[tid]
   dof_adr = m.jnt_dofadr[tid]
   qpos = d.qpos[worldId]
-  qvel = d.qvel[worldId]
+  qvel = qvel_in[worldId]
 
-  if jnt_type == 0: # free joint
+  if jnt_type == 0:  # free joint
     qpos_pos = wp.vec3(qpos[qpos_adr], qpos[qpos_adr + 1], qpos[qpos_adr + 2])
     qvel_lin = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
@@ -102,7 +108,7 @@ def integrate_joint_positions(
     qpos[qpos_adr + 5] = qpos_quat_new[2]
     qpos[qpos_adr + 6] = qpos_quat_new[3]
 
-  elif jnt_type == 1: # ball joint
+  elif jnt_type == 1:  # ball joint
     qpos_quat = wp.quat(
         qpos[qpos_adr],
         qpos[qpos_adr + 1],
@@ -121,33 +127,21 @@ def integrate_joint_positions(
   else:  # if jnt_type in (JointType.HINGE, JointType.SLIDE):
     qpos[qpos_adr] = qpos[qpos_adr] + m.timestep * qvel[dof_adr]
 
+
 def advance(
-    m: types.Model, d: types.Data,
-    act_dot: Optional[wp.array] = None,
-    qacc: Optional[wp.array] = None,
+    m: types.Model,
+    d: types.Data,
+    act_dot: wp.array,
+    qacc: wp.array,
     qvel: Optional[wp.array] = None,
 ) -> types.Data:
   """Advance state and time given activation derivatives and acceleration."""
+
   # skip if no stateful actuators.
-
-  if act_dot is None:
-    act_dot = d.act_dot
-
-  if qacc is None:
-    qacc = d.qacc
-
   if m.na:
-    # warp implementation of next activation - per actuator
-    wp.launch(
-        kernel=next_activation,
-        dim=(d.nworld, m.nu),
-        inputs=[m, d],
-    )
+    wp.launch(next_activation, dim=(d.nworld, m.nu), inputs=[m, d, act_dot])
 
-  # warp implementation of velocity advancement - per dof
-  wp.launch(
-      kernel=advance_velocities, dim=(d.nworld, m.nv), inputs=[m, d]
-  )
+  wp.launch(advance_velocities, dim=(d.nworld, m.nv), inputs=[m, d, qacc])
 
   # advance positions with qvel if given, d.qvel otherwise (semi-implicit)
   if qvel is not None:
@@ -155,16 +149,14 @@ def advance(
   else:
     qvel_in = d.qvel
 
-  # warp implementation of integration - per joint
   wp.launch(
-      kernel=integrate_joint_positions,
-      dim=(d.nworld, m.njnt),
-      inputs=[m, d],
+      integrate_joint_positions, dim=(d.nworld, m.njnt), inputs=[m, d, qvel_in]
   )
 
   d.time = d.time + m.timestep
 
   return d
+
 
 def euler(m: types.Model, d: types.Data) -> types.Data:
   """Euler integrator, semi-implicit in velocity."""
@@ -179,15 +171,17 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
   @wp.kernel
   def sum_qfrc(m: types.Model, d: types.Data):
     worldId, tid = wp.tid()
-    d.qfrc_eulerdamp[worldId, tid] = d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
+    d.qfrc_eulerdamp[worldId, tid] = (
+        d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
+    )
 
   wp.copy(d.qacc_eulerdamp, d.qacc)
-  #if not m.opt.disableflags & DisableBit.EULERDAMP:
-  if True:
+  # if not m.disable_flags & types.MJ_DSBL_EULERDAMP:
+  if False:
     # TODO AD: support for dense
-    wp.launch(add_damping, dim=(d.nworld, m.nM), inputs = [m, d])
+    wp.launch(add_damping, dim=(d.nworld, m.nM), inputs=[m, d])
     wp.launch(sum_qfrc, dim=(d.nworld, m.nv), inputs=[m, d])
-    
+
     smooth.factor_m(m, d)
     d.qacc_eulerdamp = smooth.solve_m(m, d, d.qfrc_eulerdamp)
   return advance(m, d, d.act_dot, d.qacc_eulerdamp)

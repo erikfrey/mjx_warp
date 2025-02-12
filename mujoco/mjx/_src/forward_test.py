@@ -2,27 +2,29 @@
 
 from absl.testing import absltest
 from etils import epath
-import mujoco
-from mujoco import mjx
 import numpy as np
 
+import mujoco
+from mujoco import mjx
 
 # tolerance for difference between MuJoCo and MJX forward calculations - mostly
 # due to float precision
 _TOLERANCE = 1e-5
+
 
 def _assert_eq(a, b, name):
   tol = _TOLERANCE * 10  # avoid test noise
   err_msg = f'mismatch: {name}'
   np.testing.assert_allclose(a, b, err_msg=err_msg, atol=tol, rtol=tol)
 
+
 class ForwardTest(absltest.TestCase):
-  
+
   def test_euler(self):
     path = epath.resource_path('mujoco.mjx') / 'test_data/constraints.xml'
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     # disable euler damp
-    #mjm.opt.disableflags = mjm.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_EULERDAMP
+    # mjm.opt.disableflags = mjm.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_EULERDAMP
 
     mjd = mujoco.MjData(mjm)
     # apply some control and xfrc input
@@ -45,6 +47,9 @@ class ForwardTest(absltest.TestCase):
   def test_eulerdamp(self):
     path = epath.resource_path('mujoco.mjx') / 'test_data/pendula.xml'
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
+    mjm.opt.disableflags = (
+        mjm.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_EULERDAMP
+    )
     self.assertTrue((mjm.dof_damping > 0).any())
 
     mjd = mujoco.MjData(mjm)
@@ -58,7 +63,6 @@ class ForwardTest(absltest.TestCase):
     mjx.euler(m, d)
     mujoco.mj_Euler(mjm, mjd)
 
-    print(d.qpos.numpy()[0], mjd.qpos)
     _assert_eq(d.qpos.numpy()[0], mjd.qpos, 'qpos')
 
     # also test sparse

@@ -2,14 +2,16 @@
 
 from absl.testing import absltest
 from etils import epath
-import mujoco
-from mujoco import mjx
 import numpy as np
 import warp as wp
+
+import mujoco
+from mujoco import mjx
 
 # tolerance for difference between MuJoCo and MJX smooth calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
+
 
 def _assert_eq(a, b, name):
   tol = _TOLERANCE * 10  # avoid test noise
@@ -23,7 +25,7 @@ class SmoothTest(absltest.TestCase):
     path = epath.resource_path('mujoco.mjx') / 'test_data/humanoid/humanoid.xml'
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjd = mujoco.MjData(mjm)
-    mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
+    mujoco.mj_resetDataKeyframe(mjm, mjd, 1)  # reset to stand_on_left_leg
     mujoco.mj_forward(mjm, mjd)
     m = mjx.put_model(mjm)
     d = mjx.put_data(mjm, mjd)
@@ -76,6 +78,7 @@ class SmoothTest(absltest.TestCase):
     mjx.factor_m(m, d)
     _assert_eq(d.qLD.numpy()[0], mjd.qLD, 'qLD')
     _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, 'qLDiagInv')
+
 
 if __name__ == '__main__':
   wp.init()

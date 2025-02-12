@@ -17,26 +17,28 @@
 import time
 from typing import Callable, Tuple
 
-import mujoco
 import warp as wp
+
+import mujoco
 
 # pylint: disable=g-importing-member
 from . import io
 from . import smooth
 from .types import Data
 from .types import Model
+
 # pylint: enable=g-importing-member
 
 
 def benchmark(
-  fn: Callable[[Model, Data], None],
-  m: mujoco.MjModel,
-  nstep: int = 1000,
-  batch_size: int = 1024,
-  unroll_steps: int = 1,
-  solver: str = "newton",
-  iterations: int = 1,
-  ls_iterations: int = 4,
+    fn: Callable[[Model, Data], None],
+    m: mujoco.MjModel,
+    nstep: int = 1000,
+    batch_size: int = 1024,
+    unroll_steps: int = 1,
+    solver: str = "newton",
+    iterations: int = 1,
+    ls_iterations: int = 4,
 ) -> Tuple[float, float, int]:
   """Benchmark a model."""
 

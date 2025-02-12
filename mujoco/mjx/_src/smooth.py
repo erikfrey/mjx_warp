@@ -1,4 +1,5 @@
 import warp as wp
+
 from . import math
 from . import types
 
@@ -28,7 +29,9 @@ def kinematics(m: types.Model, d: types.Data):
       qadr = m.jnt_qposadr[jntadr]
       # TODO(erikfrey): would it be better to use some kind of wp.copy here?
       xpos = wp.vec3(qpos[qadr], qpos[qadr + 1], qpos[qadr + 2])
-      xquat = wp.quat(qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6])
+      xquat = wp.quat(
+          qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6]
+      )
       d.xanchor[worldid, jntadr] = xpos
       d.xaxis[worldid, jntadr] = m.jnt_axis[jntadr]
     else:
@@ -46,7 +49,7 @@ def kinematics(m: types.Model, d: types.Data):
 
         if jnt_type == 3:  # hinge
           qloc = math.axis_angle_to_quat(
-            m.jnt_axis[jntadr], d.qpos[worldid, qadr] - m.qpos0[qadr]
+              m.jnt_axis[jntadr], d.qpos[worldid, qadr] - m.qpos0[qadr]
           )
           xquat = math.mul_quat(xquat, qloc)
           # correct for off-center rotation
@@ -70,7 +73,9 @@ def com_pos(m: types.Model, d: types.Data):
 
   @wp.kernel
   def mass_subtree_acc(
-    m: types.Model, mass_subtree: wp.array(dtype=wp.float32, ndim=1), leveladr: int
+      m: types.Model,
+      mass_subtree: wp.array(dtype=wp.float32, ndim=1),
+      leveladr: int,
   ):
     nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
@@ -80,7 +85,9 @@ def com_pos(m: types.Model, d: types.Data):
   @wp.kernel
   def subtree_com_init(m: types.Model, d: types.Data):
     worldid, bodyid = wp.tid()
-    d.subtree_com[worldid, bodyid] = d.xipos[worldid, bodyid] * m.body_mass[bodyid]
+    d.subtree_com[worldid, bodyid] = (
+        d.xipos[worldid, bodyid] * m.body_mass[bodyid]
+    )
 
   @wp.kernel
   def subtree_com_acc(m: types.Model, d: types.Data, leveladr: int):
@@ -90,7 +97,9 @@ def com_pos(m: types.Model, d: types.Data):
     wp.atomic_add(d.subtree_com, worldid, pid, d.subtree_com[worldid, bodyid])
 
   @wp.kernel
-  def subtree_div(mass_subtree: wp.array(dtype=wp.float32, ndim=1), d: types.Data):
+  def subtree_div(
+      mass_subtree: wp.array(dtype=wp.float32, ndim=1), d: types.Data
+  ):
     worldid, bodyid = wp.tid()
     d.subtree_com[worldid, bodyid] /= mass_subtree[bodyid]
 
@@ -100,7 +109,9 @@ def com_pos(m: types.Model, d: types.Data):
     mat = d.ximat[worldid, bodyid]
     inert = m.body_inertia[bodyid]
     mass = m.body_mass[bodyid]
-    dif = d.xipos[worldid, bodyid] - d.subtree_com[worldid, m.body_rootid[bodyid]]
+    dif = (
+        d.xipos[worldid, bodyid] - d.subtree_com[worldid, m.body_rootid[bodyid]]
+    )
     # express inertia in com-based frame (mju_inertCom)
 
     res = types.vec10()
@@ -138,7 +149,10 @@ def com_pos(m: types.Model, d: types.Data):
     xmat = wp.transpose(d.xmat[worldid, bodyid])
 
     # compute com-anchor vector
-    offset = d.subtree_com[worldid, m.body_rootid[bodyid]] - d.xanchor[worldid, jntid]
+    offset = (
+        d.subtree_com[worldid, m.body_rootid[bodyid]]
+        - d.xanchor[worldid, jntid]
+    )
 
     res = d.cdof[worldid]
     if jnt_type == 0:  # free
@@ -240,7 +254,9 @@ def factor_m(m: types.Model, d: types.Data):
     tmp = d.qLD[worldid, Madr_ki] / d.qLD[worldid, m.dof_Madr[k]]
     for j in range(m.dof_Madr[i + 1] - Madr_i):
       # M(i,j) -= M(k,j) * tmp
-      wp.atomic_sub(d.qLD[worldid], Madr_i + j, d.qLD[worldid, Madr_ki + j] * tmp)
+      wp.atomic_sub(
+          d.qLD[worldid], Madr_i + j, d.qLD[worldid, Madr_ki + j] * tmp
+      )
     # M(k,i) = tmp
     d.qLD[worldid, Madr_ki] = tmp
 
@@ -256,44 +272,49 @@ def factor_m(m: types.Model, d: types.Data):
   for i in range(len(leveladr) - 1, -1, -1):
     adr, size = leveladr[i], levelsize[i]
     wp.launch(qLD_acc, dim=(d.nworld, size), inputs=[m, d, adr])
-  
+
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, d])
 
-def solve_m(m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32)) -> wp.array2d(dtype=wp.float32):
+
+def solve_m(
+    m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32)
+) -> wp.array2d(dtype=wp.float32):
   """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
 
   # TODO AD support dense
 
   @wp.kernel
-  def solve_m_naive(m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32)):
+  def solve_m_naive(
+      m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32)
+  ):
     worldid = wp.tid()
 
     # forward substitution
     for i in range(m.nv):
-        s = x[worldid, i]
+      s = x[worldid, i]
 
-        dofid = m.dof_parentid[i]
-        madr = m.dof_Madr[i]
-        while dofid >= 0:
-          madr += 1
-          s -= d.qLD[worldid, madr] * x[worldid, dofid]
-          dofid = m.dof_parentid[dofid]
+      dofid = m.dof_parentid[i]
+      madr = m.dof_Madr[i]
+      while dofid >= 0:
+        madr += 1
+        s -= d.qLD[worldid, madr] * x[worldid, dofid]
+        dofid = m.dof_parentid[dofid]
 
-        # to the diagonal directly in here
-        x[worldid, i] = s * d.qLDiagInv[worldid, i]
+      # to the diagonal directly in here
+      x[worldid, i] = s * d.qLDiagInv[worldid, i]
 
-    # backward substitution 
+    # backward substitution
     for i in range(m.nv - 1, -1, -1):
-        s = x[worldid, i]
+      s = x[worldid, i]
 
-        dofid = m.dof_parentid[i]
-        madr = m.dof_Madr[i]
-        while dofid >= 0:
-          madr += 1
-          s -= d.qLD[worldid, madr] * x[worldid, dofid]
-          dofid = m.dof_parentid[dofid]
+      dofid = m.dof_parentid[i]
+      madr = m.dof_Madr[i]
+      while dofid >= 0:
+        madr += 1
+        s -= d.qLD[worldid, madr] * x[worldid, dofid]
+        dofid = m.dof_parentid[dofid]
 
-        x[worldid, i] = s
+      x[worldid, i] = s
 
   wp.launch(solve_m_naive, dim=(d.nworld), inputs=[m, d, x])
 

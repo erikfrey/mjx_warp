@@ -1,11 +1,30 @@
 import warp as wp
+
 import mujoco
 from mujoco import mjx
 
+
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
-    pass
+  pass
+
 
 vec10 = vec10f
+
+MJ_DSBL_CONSTRAINT = 1 << 0
+MJ_DSBL_EQUALITY = 1 << 1
+MJ_DSBL_FRICTIONLOSS = 1 << 2
+MJ_DSBL_LIMIT = 1 << 3
+MJ_DSBL_CONTACT = 1 << 4
+MJ_DSBL_PASSIVE = 1 << 5
+MJ_DSBL_GRAVITY = 1 << 6
+MJ_DSBL_CLAMPCTRL = 1 << 7
+MJ_DSBL_WARMSTART = 1 << 8
+MJ_DSBL_ACTUATION = 1 << 9
+MJ_DSBL_REFSAFE = 1 << 10
+MJ_DSBL_SENSOR = 1 << 11
+MJ_DSBL_EULERDAMP = 1 << 12
+MJ_DSBL_FILTERPARENT = 1 << 13
+
 
 @wp.struct
 class Model:
@@ -19,11 +38,12 @@ class Model:
   nmocap: int
   nlevel: int  # warp only
   timestep: float
+  disable_flags: int
   nM: int
   qpos0: wp.array(dtype=wp.float32, ndim=1)
   body_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  body_tree: wp.array(dtype=wp.int32, ndim=1)   # warp only
+  body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_updates: wp.array(dtype=wp.vec3i, ndim=1)  # warp only

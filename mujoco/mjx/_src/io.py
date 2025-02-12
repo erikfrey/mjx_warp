@@ -1,6 +1,7 @@
-import warp as wp
-import mujoco
 import numpy as np
+import warp as wp
+
+import mujoco
 
 from . import types
 
@@ -17,6 +18,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nmocap = mjm.nmocap
   m.timestep = mjm.opt.timestep
   m.nM = mjm.nM
+  m.disable_flags = mjm.opt.disableflags
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=2)
 
   # body_tree is BFS ordering of body ids
@@ -41,15 +43,25 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
       Madr_ki += 1
 
   # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in qLD updates
-  qLD_levelsize = np.array([len(qLD_updates[i]) for i in range(len(qLD_updates))])
+  qLD_levelsize = np.array(
+      [len(qLD_updates[i]) for i in range(len(qLD_updates))]
+  )
   qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
-  qLD_updates = np.array(sum([qLD_updates[i] for i in range(len(qLD_updates))], []))
+  qLD_updates = np.array(
+      sum([qLD_updates[i] for i in range(len(qLD_updates))], [])
+  )
 
-  m.body_leveladr = wp.array(body_leveladr, dtype=wp.int32, ndim=1, device="cpu")
-  m.body_levelsize = wp.array(body_levelsize, dtype=wp.int32, ndim=1, device="cpu")
+  m.body_leveladr = wp.array(
+      body_leveladr, dtype=wp.int32, ndim=1, device="cpu"
+  )
+  m.body_levelsize = wp.array(
+      body_levelsize, dtype=wp.int32, ndim=1, device="cpu"
+  )
   m.body_tree = wp.array(body_tree, dtype=wp.int32, ndim=1)
   m.qLD_leveladr = wp.array(qLD_leveladr, dtype=wp.int32, ndim=1, device="cpu")
-  m.qLD_levelsize = wp.array(qLD_levelsize, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_levelsize = wp.array(
+      qLD_levelsize, dtype=wp.int32, ndim=1, device="cpu"
+  )
   m.qLD_updates = wp.array(qLD_updates, dtype=wp.vec3i, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
   m.body_jntnum = wp.array(mjm.body_jntnum, dtype=wp.int32, ndim=1)
@@ -120,7 +132,9 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   return d
 
 
-def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.Data:
+def put_data(
+    mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1
+) -> types.Data:
   d = types.Data()
   d.nworld = nworld
   d.time = mjd.time
@@ -154,7 +168,9 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qLD = wp.array(tile_fn(mjd.qLD), dtype=wp.float32, ndim=2)
   d.qLDiagInv = wp.array(tile_fn(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
   d.qfrc_smooth = wp.array(tile_fn(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
-  d.qfrc_constraint = wp.array(tile_fn(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
+  d.qfrc_constraint = wp.array(
+      tile_fn(mjd.qfrc_constraint), dtype=wp.float32, ndim=2
+  )
 
   # warp only temp arrays
   d.qfrc_eulerdamp = wp.zeros((nworld, mjm.nv), dtype=wp.float32)

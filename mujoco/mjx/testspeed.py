@@ -19,29 +19,39 @@ from typing import Sequence
 from absl import app
 from absl import flags
 from etils import epath
-import mujoco
-from mujoco import mjx
 import warp as wp
 
+import mujoco
+from mujoco import mjx
+
 _FUNCTION = flags.DEFINE_enum(
-  "function", "kinematics", ["kinematics", "com_pos", "crb", "factor_m", "advance"], "the function to run"
+    "function",
+    "kinematics",
+    ["kinematics", "com_pos", "crb", "factor_m", "advance"],
+    "the function to run",
 )
 _MJCF = flags.DEFINE_string(
-  "mjcf", None, "path to model `.xml` or `.mjb`", required=True
+    "mjcf", None, "path to model `.xml` or `.mjb`", required=True
 )
 _BASE_PATH = flags.DEFINE_string(
-  "base_path", None, "base path, defaults to mujoco.mjx resource path"
+    "base_path", None, "base path, defaults to mujoco.mjx resource path"
 )
 _NSTEP = flags.DEFINE_integer("nstep", 1000, "number of steps per rollout")
-_BATCH_SIZE = flags.DEFINE_integer("batch_size", 4096, "number of parallel rollouts")
+_BATCH_SIZE = flags.DEFINE_integer(
+    "batch_size", 4096, "number of parallel rollouts"
+)
 _UNROLL = flags.DEFINE_integer("unroll", 1, "loop unroll length")
-_SOLVER = flags.DEFINE_enum("solver", "cg", ["cg", "newton"], "constraint solver")
-_ITERATIONS = flags.DEFINE_integer("iterations", 1, "number of solver iterations")
+_SOLVER = flags.DEFINE_enum(
+    "solver", "cg", ["cg", "newton"], "constraint solver"
+)
+_ITERATIONS = flags.DEFINE_integer(
+    "iterations", 1, "number of solver iterations"
+)
 _LS_ITERATIONS = flags.DEFINE_integer(
-  "ls_iterations", 4, "number of linesearch iterations"
+    "ls_iterations", 4, "number of linesearch iterations"
 )
 _OUTPUT = flags.DEFINE_enum(
-  "output", "text", ["text", "tsv"], "format to print results"
+    "output", "text", ["text", "tsv"], "format to print results"
 )
 
 
@@ -59,21 +69,21 @@ def _main(argv: Sequence[str]):
 
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
   fn = {
-    'kinematics': mjx.kinematics,
-    'com_pos': mjx.com_pos,
-    'crb': mjx.crb,
-    'advance': mjx.advance,
-    'factor_m': mjx.factor_m,
+      "kinematics": mjx.kinematics,
+      "com_pos": mjx.com_pos,
+      "crb": mjx.crb,
+      "advance": mjx.advance,
+      "factor_m": mjx.factor_m,
   }[_FUNCTION.value]
   jit_time, run_time, steps = mjx.benchmark(
-    fn,
-    m,
-    _NSTEP.value,
-    _BATCH_SIZE.value,
-    _UNROLL.value,
-    _SOLVER.value,
-    _ITERATIONS.value,
-    _LS_ITERATIONS.value,
+      fn,
+      m,
+      _NSTEP.value,
+      _BATCH_SIZE.value,
+      _UNROLL.value,
+      _SOLVER.value,
+      _ITERATIONS.value,
+      _LS_ITERATIONS.value,
   )
 
   name = argv[0]
