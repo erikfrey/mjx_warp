@@ -323,10 +323,6 @@ def solve_m(
   ):
     worldid = wp.tid()
 
-    # copy before in-place ops
-    for i in range(m.nv):
-      y[worldid, i] = x[worldid, i]
-
     # forward substitution
     for i in range(m.nv):
       s = y[worldid, i]
@@ -355,6 +351,7 @@ def solve_m(
       y[worldid, i] = s
 
   if (m.is_sparse):
+    wp.copy(y, x)
     wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, d, x, y])
   else:
     wp.launch_tiled(solve_m_dense, dim=(d.nworld), inputs=[d, x, y], block_dim=BLOCK_DIM)
