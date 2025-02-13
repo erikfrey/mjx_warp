@@ -273,50 +273,6 @@ def _factor_m_sparse(m: types.Model, d: types.Data):
 
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, d])
 
-
-def solve_m(
-    m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32)
-) -> wp.array2d(dtype=wp.float32):
-  """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
-
-  # TODO AD support dense
-
-  @wp.kernel
-  def solve_m_naive(
-      m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32)
-  ):
-    worldid = wp.tid()
-
-    # forward substitution
-    for i in range(m.nv):
-      s = x[worldid, i]
-
-      dofid = m.dof_parentid[i]
-      madr = m.dof_Madr[i]
-      while dofid >= 0:
-        madr += 1
-        s -= d.qLD[worldid, madr] * x[worldid, dofid]
-        dofid = m.dof_parentid[dofid]
-
-      # do the diagonal directly in here
-      x[worldid, i] = s * d.qLDiagInv[worldid, i]
-
-    # backward substitution
-    for i in range(m.nv - 1, -1, -1):
-      s = x[worldid, i]
-
-      dofid = m.dof_parentid[i]
-      madr = m.dof_Madr[i]
-      while dofid >= 0:
-        madr += 1
-        s -= d.qLD[worldid, madr] * x[worldid, dofid]
-        dofid = m.dof_parentid[dofid]
-
-      x[worldid, i] = s
-
-  wp.launch(solve_m_naive, dim=(d.nworld), inputs=[m, d, x])
-
-  return x
 def _factor_m_dense(m: types.Model, d: types.Data, block_dim: int = 32):
   """Dense Cholesky factorizaton of inertia-like matrix M, assumed spd."""
 
@@ -341,3 +297,66 @@ def factor_m(m: types.Model, d: types.Data, block_dim: int = 32):
     _factor_m_sparse(m, d)
   else:
     _factor_m_dense(m, d, block_dim=block_dim)
+
+
+def solve_m(
+    m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32), block_dim: int = 32
+) -> wp.array2d(dtype=wp.float32):
+  """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
+
+  TILE = m.nv
+  BLOCK_DIM = block_dim
+
+  @wp.kernel
+  def solve_m_dense(
+      d: types.Data, x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32)
+  ):
+    worldid = wp.tid()
+    qLD_tile = wp.tile_load(d.qLD[worldid], shape=(TILE, TILE))
+    y_tile = wp.tile_load(y[worldid], shape=(TILE))
+    x_tile = wp.tile_cholesky_solve(qLD_tile, y_tile)
+    wp.tile_store(x[worldid], x_tile)
+
+  @wp.kernel
+  def solve_m_sparse(
+      m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32)
+  ):
+    worldid = wp.tid()
+
+    # copy before in-place ops
+    for i in range(m.nv):
+      x[worldid, i] = y[worldid, i]
+
+    # forward substitution
+    for i in range(m.nv):
+      s = x[worldid, i]
+
+      dofid = m.dof_parentid[i]
+      madr = m.dof_Madr[i]
+      while dofid >= 0:
+        madr += 1
+        s -= d.qLD[worldid, 0, madr] * x[worldid, dofid]
+        dofid = m.dof_parentid[dofid]
+
+      # do the diagonal directly in here
+      x[worldid, i] = s * d.qLDiagInv[worldid, i]
+
+    # backward substitution
+    for i in range(m.nv - 1, -1, -1):
+      s = x[worldid, i]
+
+      dofid = m.dof_parentid[i]
+      madr = m.dof_Madr[i]
+      while dofid >= 0:
+        madr += 1
+        s -= d.qLD[worldid, 0, madr] * x[worldid, dofid]
+        dofid = m.dof_parentid[dofid]
+
+      x[worldid, i] = s
+
+  if (m.is_sparse):
+    wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, d, x, y])
+  else:
+    wp.launch_tiled(solve_m_dense, dim=(d.nworld), inputs=[d, x, y], block_dim=BLOCK_DIM)
+
+  return x

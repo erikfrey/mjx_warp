@@ -107,6 +107,8 @@ class Data:
   qM: wp.array(dtype=wp.float32, ndim=3)
   qLD: wp.array(dtype=wp.float32, ndim=3)
   qacc: wp.array(dtype=wp.float32, ndim=2)
+  qacc_eulerdamp: wp.array(dtype=wp.float32, ndim=2)
+  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
   act_dot: wp.array(dtype=wp.float32, ndim=2)
   act: wp.array(dtype=wp.float32, ndim=2)
@@ -114,4 +116,3 @@ class Data:
   qfrc_eulerdamp: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
-  qacc_eulerdamp: wp.array(dtype=wp.float32, ndim=2)

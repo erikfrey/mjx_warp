@@ -91,6 +91,31 @@ class SmoothTest(absltest.TestCase):
     _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
 
 
+  def test_solve_m_sparse(self):
+    """Tests solveM (sparse)"""
+    _, mjd, m, d = self._humanoid()
+
+    #d.qacc_smooth.zero_()
+
+    #mjx.solve_m(m, d, d.qfrc_smooth, d.qacc_smooth)
+    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (sparse)')
+
+  def test_solve_m_dense(self):
+    """Tests solveM (sparse)"""
+    mjm, mjd, m, d = self._humanoid(is_sparse=False)
+
+    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (dense)')
+    _assert_eq(d.qfrc_smooth.numpy()[0], mjd.qfrc_smooth, 'qacc_smooth (dense)')
+    
+    d.qacc_smooth.zero_()
+    mujoco.mju_zero(mjd.qacc_smooth)
+
+    d.qacc_smooth = mjx.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
+    mjd.qacc_smooth = np.linalg.solve(d.qLD.numpy()[0].T, d.qfrc_smooth.numpy()[0])
+    #mujoco.mj_solveM(mjm, mjd, mjd.qacc_smooth.reshape(1, mjm.nv), mjd.qfrc_smooth.reshape(1, mjm.nv))
+
+    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (dense)')
+
 if __name__ == '__main__':
   wp.init()
   absltest.main()
