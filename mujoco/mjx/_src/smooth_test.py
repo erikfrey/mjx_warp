@@ -21,9 +21,10 @@ def _assert_eq(a, b, name):
 
 class SmoothTest(absltest.TestCase):
 
-  def _humanoid(self):
+  def _humanoid(self, is_sparse=True):
     path = epath.resource_path('mujoco.mjx') / 'test_data/humanoid/humanoid.xml'
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
+    mjm.opt.jacobian = is_sparse
     mjd = mujoco.MjData(mjm)
     mujoco.mj_resetDataKeyframe(mjm, mjd, 1)  # reset to stand_on_left_leg
     mujoco.mj_forward(mjm, mjd)
@@ -66,18 +67,28 @@ class SmoothTest(absltest.TestCase):
 
     mjx.crb(m, d)
     _assert_eq(d.crb.numpy()[0], mjd.crb, 'crb')
-    _assert_eq(d.qM.numpy()[0], mjd.qM, 'qM')
+    _assert_eq(d.qM.numpy()[0, 0], mjd.qM, 'qM')
 
-  def test_factor_m(self):
-    """Tests MJX factor_m."""
+  def test_factor_m_sparse(self):
+    """Tests MJX factor_m (sparse)."""
     _, mjd, m, d = self._humanoid()
 
     for arr in (d.qLD, d.qLDiagInv):
       arr.zero_()
 
     mjx.factor_m(m, d)
-    _assert_eq(d.qLD.numpy()[0], mjd.qLD, 'qLD')
+    _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, 'qLD (sparse)')
     _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, 'qLDiagInv')
+
+  def test_factor_m_dense(self):
+    """Tests MJX factor_m (dense)."""
+    _, _, m, d = self._humanoid(is_sparse=False)
+
+    qLD = d.qLD.numpy()[0].copy()
+    d.qLD.zero_()
+
+    mjx.factor_m(m, d)
+    _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
 
 
 if __name__ == '__main__':

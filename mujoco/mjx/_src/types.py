@@ -79,6 +79,7 @@ class Model:
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
+  is_sparse: bool  # warp only
 
 
 @wp.struct
@@ -103,12 +104,12 @@ class Data:
   cinert: wp.array(dtype=vec10, ndim=2)
   cdof: wp.array(dtype=wp.spatial_vector, ndim=2)
   crb: wp.array(dtype=vec10, ndim=2)
-  qM: wp.array(dtype=wp.float32, ndim=2)
+  qM: wp.array(dtype=wp.float32, ndim=3)
+  qLD: wp.array(dtype=wp.float32, ndim=3)
   qacc: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
   act_dot: wp.array(dtype=wp.float32, ndim=2)
   act: wp.array(dtype=wp.float32, ndim=2)
-  qLD: wp.array(dtype=wp.float32, ndim=2)
   qLDiagInv: wp.array(dtype=wp.float32, ndim=2)
   qfrc_eulerdamp: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)

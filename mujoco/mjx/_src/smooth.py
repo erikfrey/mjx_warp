@@ -212,7 +212,7 @@ def crb(m: types.Model, d: types.Data):
     bodyid = m.dof_bodyid[dofid]
 
     # init M(i,i) with armature inertia
-    d.qM[worldid, madr_ij] = m.dof_armature[dofid]
+    d.qM[worldid, 0, madr_ij] = m.dof_armature[dofid]
 
     # precompute buf = crb_body_i * cdof_i
     i = d.crb[worldid, bodyid]
@@ -227,7 +227,7 @@ def crb(m: types.Model, d: types.Data):
     buf[5] = i[7] * v[0] - i[6] * v[1] + i[9] * v[5]
     # sparse backward pass over ancestors
     while dofid >= 0:
-      d.qM[worldid, madr_ij] += wp.dot(d.cdof[worldid, dofid], buf)
+      d.qM[worldid, 0, madr_ij] += wp.dot(d.cdof[worldid, dofid], buf)
       madr_ij += 1
       dofid = m.dof_parentid[dofid]
 
@@ -241,7 +241,7 @@ def crb(m: types.Model, d: types.Data):
   wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
 
 
-def factor_m(m: types.Model, d: types.Data):
+def _factor_m_sparse(m: types.Model, d: types.Data):
   """Sparse L'*D*L factorizaton of inertia-like matrix M, assumed spd."""
 
   @wp.kernel
@@ -251,19 +251,17 @@ def factor_m(m: types.Model, d: types.Data):
     i, k, Madr_ki = update[0], update[1], update[2]
     Madr_i = m.dof_Madr[i]
     # tmp = M(k,i) / M(k,k)
-    tmp = d.qLD[worldid, Madr_ki] / d.qLD[worldid, m.dof_Madr[k]]
+    tmp = d.qLD[worldid, 0, Madr_ki] / d.qLD[worldid, 0, m.dof_Madr[k]]
     for j in range(m.dof_Madr[i + 1] - Madr_i):
       # M(i,j) -= M(k,j) * tmp
-      wp.atomic_sub(
-          d.qLD[worldid], Madr_i + j, d.qLD[worldid, Madr_ki + j] * tmp
-      )
+      wp.atomic_sub(d.qLD[worldid, 0], Madr_i + j, d.qLD[worldid, 0, Madr_ki + j] * tmp)
     # M(k,i) = tmp
-    d.qLD[worldid, Madr_ki] = tmp
+    d.qLD[worldid, 0, Madr_ki] = tmp
 
   @wp.kernel
   def qLDiag_div(m: types.Model, d: types.Data):
     worldid, dofid = wp.tid()
-    d.qLDiagInv[worldid, dofid] = 1.0 / d.qLD[worldid, m.dof_Madr[dofid]]
+    d.qLDiagInv[worldid, dofid] = 1.0 / d.qLD[worldid, 0, m.dof_Madr[dofid]]
 
   wp.copy(d.qLD, d.qM)
 
@@ -319,3 +317,27 @@ def solve_m(
   wp.launch(solve_m_naive, dim=(d.nworld), inputs=[m, d, x])
 
   return x
+def _factor_m_dense(m: types.Model, d: types.Data, block_dim: int = 32):
+  """Dense Cholesky factorizaton of inertia-like matrix M, assumed spd."""
+
+  TILE = m.nv
+  BLOCK_DIM = block_dim
+
+  @wp.kernel
+  def cholesky_factorization(m: types.Model, d: types.Data):
+    worldid = wp.tid()
+    qM_tile = wp.tile_load(d.qM[worldid], shape=(TILE, TILE))
+    qLD_tile = wp.tile_cholesky(qM_tile)
+    wp.tile_store(d.qLD[worldid], qLD_tile)
+
+  wp.launch_tiled(cholesky_factorization, dim=(
+      d.nworld), inputs=[m, d], block_dim=BLOCK_DIM)
+
+
+def factor_m(m: types.Model, d: types.Data, block_dim: int = 32):
+  """Factorizaton of inertia-like matrix M, assumed spd."""
+
+  if wp.static(m.is_sparse):
+    _factor_m_sparse(m, d)
+  else:
+    _factor_m_dense(m, d, block_dim=block_dim)
