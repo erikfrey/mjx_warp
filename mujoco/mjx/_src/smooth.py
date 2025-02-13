@@ -319,40 +319,37 @@ def solve_m(
 
   @wp.kernel
   def solve_m_sparse(
-      m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32)
+      m: types.Model, d: types.Data, y: wp.array2d(dtype=wp.float32)
   ):
     worldid = wp.tid()
 
-    # forward substitution
+    # x <- inv(L') * x;
+    for i in range(m.nv-1, -1, -1):
+      madr_ij = m.dof_Madr[i] + 1
+      j = m.dof_parentid[i]
+
+      while j >= 0:
+        y[worldid, j] = y[worldid, j] - d.qLD[worldid, 0, madr_ij] * y[worldid, i]
+        madr_ij += 1
+        j = m.dof_parentid[j]
+
+    # x <- inv(D) * x
     for i in range(m.nv):
-      s = y[worldid, i]
+      y[worldid, i] = y[worldid, i] * d.qLDiagInv[worldid, i]
 
-      dofid = m.dof_parentid[i]
-      madr = m.dof_Madr[i]
-      while dofid >= 0:
-        madr += 1
-        s -= d.qLD[worldid, 0, madr] * y[worldid, dofid]
-        dofid = m.dof_parentid[dofid]
+    # x <- inv(L) * x; 
+    for i in range(m.nv):
+      madr_ij = m.dof_Madr[i] + 1
+      j = m.dof_parentid[i]
 
-      # do the diagonal directly in here
-      y[worldid, i] = s * d.qLDiagInv[worldid, i]
-
-    # backward substitution
-    for i in range(m.nv - 1, -1, -1):
-      s = y[worldid, i]
-
-      dofid = m.dof_parentid[i]
-      madr = m.dof_Madr[i]
-      while dofid >= 0:
-        madr += 1
-        s -= d.qLD[worldid, 0, madr] * y[worldid, dofid]
-        dofid = m.dof_parentid[dofid]
-
-      y[worldid, i] = s
+      while j >= 0:
+        y[worldid, i] = y[worldid, i] - d.qLD[worldid, 0, madr_ij] * y[worldid, j]
+        madr_ij += 1
+        j = m.dof_parentid[j]
 
   if (m.is_sparse):
     wp.copy(y, x)
-    wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, d, x, y])
+    wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, d, y])
   else:
     wp.launch_tiled(solve_m_dense, dim=(d.nworld), inputs=[d, x, y], block_dim=BLOCK_DIM)
 
