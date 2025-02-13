@@ -180,24 +180,6 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
     
     wp.launch(add_damping_sum_qfrc_kernel, dim=(d.nworld, m.nv), inputs=[m, d])
 
-  @wp.kernel
-  def add_damping_sparse(m: types.Model, d: types.Data):
-    worldId, tid = wp.tid()
-    dof_Madr = m.dof_Madr[tid]
-    d.qM[worldId, 0, dof_Madr] += m.timestep * m.dof_damping[dof_Madr]
-
-  @wp.kernel
-  def add_damping_dense(m: types.Model, d: types.Data):
-    worldId, tid = wp.tid()
-    d.qM[worldId, tid, tid] += m.timestep * m.dof_damping[tid]
-
-  @wp.kernel
-  def sum_qfrc(m: types.Model, d: types.Data):
-    worldId, tid = wp.tid()
-    d.qfrc_eulerdamp[worldId, tid] = (
-        d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
-    )
-
   wp.copy(d.qacc_eulerdamp, d.qacc)
 
   if not m.disable_flags & types.MJ_DSBL_EULERDAMP:    
