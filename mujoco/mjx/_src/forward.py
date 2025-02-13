@@ -162,6 +162,24 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
   """Euler integrator, semi-implicit in velocity."""
   # integrate damping implicitly
 
+  def add_damping_sum_qfrc(m: types.Model, d: types.Data, is_sparse: bool):
+
+    @wp.kernel
+    def add_damping_sum_qfrc_kernel(m: types.Model, d: types.Data):
+      worldId, tid = wp.tid()
+
+      if (wp.static(is_sparse)):
+        dof_Madr = m.dof_Madr[tid]
+        d.qM[worldId, 0, dof_Madr] += m.timestep * m.dof_damping[dof_Madr]
+      else:
+        d.qM[worldId, tid, tid] += m.timestep * m.dof_damping[tid]
+
+      d.qfrc_eulerdamp[worldId, tid] = (
+          d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
+      )
+    
+    wp.launch(add_damping_sum_qfrc_kernel, dim=(d.nworld, m.nv), inputs=[m, d])
+
   @wp.kernel
   def add_damping_sparse(m: types.Model, d: types.Data):
     worldId, tid = wp.tid()
@@ -181,12 +199,9 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
     )
 
   wp.copy(d.qacc_eulerdamp, d.qacc)
+
   if not m.disable_flags & types.MJ_DSBL_EULERDAMP:    
-    if m.is_sparse:
-      wp.launch(add_damping_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
-    else:
-      wp.launch(add_damping_dense, dim=(d.nworld, m.nv), inputs=[m, d])
-    wp.launch(sum_qfrc, dim=(d.nworld, m.nv), inputs=[m, d])
+    add_damping_sum_qfrc(m, d, m.is_sparse)
     smooth.factor_m(m, d)
     d.qacc_eulerdamp = smooth.solve_m(m, d, d.qfrc_eulerdamp, d.qacc_eulerdamp)
   return _advance(m, d, d.act_dot, d.qacc_eulerdamp)
