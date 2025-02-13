@@ -190,5 +190,5 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
     wp.launch(sum_qfrc, dim=(d.nworld, m.nv), inputs=[m, d])
 
     smooth.factor_m(m, d)
-    smooth.solve_m(m, d, d.qacc_eulerdamp, d.qfrc_eulerdamp)
+    d.qacc_eulerdamp = smooth.solve_m(m, d, d.qfrc_eulerdamp, d.qacc_eulerdamp)
   return _advance(m, d, d.act_dot, d.qacc_eulerdamp)

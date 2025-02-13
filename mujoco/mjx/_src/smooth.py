@@ -313,9 +313,9 @@ def solve_m(
   ):
     worldid = wp.tid()
     qLD_tile = wp.tile_load(d.qLD[worldid], shape=(TILE, TILE))
-    y_tile = wp.tile_load(y[worldid], shape=(TILE))
-    x_tile = wp.tile_cholesky_solve(qLD_tile, y_tile)
-    wp.tile_store(x[worldid], x_tile)
+    x_tile = wp.tile_load(x[worldid], shape=(TILE))
+    y_tile = wp.tile_cholesky_solve(qLD_tile, x_tile)
+    wp.tile_store(y[worldid], y_tile)
 
   @wp.kernel
   def solve_m_sparse(
@@ -325,38 +325,38 @@ def solve_m(
 
     # copy before in-place ops
     for i in range(m.nv):
-      x[worldid, i] = y[worldid, i]
+      y[worldid, i] = x[worldid, i]
 
     # forward substitution
     for i in range(m.nv):
-      s = x[worldid, i]
+      s = y[worldid, i]
 
       dofid = m.dof_parentid[i]
       madr = m.dof_Madr[i]
       while dofid >= 0:
         madr += 1
-        s -= d.qLD[worldid, 0, madr] * x[worldid, dofid]
+        s -= d.qLD[worldid, 0, madr] * y[worldid, dofid]
         dofid = m.dof_parentid[dofid]
 
       # do the diagonal directly in here
-      x[worldid, i] = s * d.qLDiagInv[worldid, i]
+      y[worldid, i] = s * d.qLDiagInv[worldid, i]
 
     # backward substitution
     for i in range(m.nv - 1, -1, -1):
-      s = x[worldid, i]
+      s = y[worldid, i]
 
       dofid = m.dof_parentid[i]
       madr = m.dof_Madr[i]
       while dofid >= 0:
         madr += 1
-        s -= d.qLD[worldid, 0, madr] * x[worldid, dofid]
+        s -= d.qLD[worldid, 0, madr] * y[worldid, dofid]
         dofid = m.dof_parentid[dofid]
 
-      x[worldid, i] = s
+      y[worldid, i] = s
 
   if (m.is_sparse):
     wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, d, x, y])
   else:
     wp.launch_tiled(solve_m_dense, dim=(d.nworld), inputs=[d, x, y], block_dim=BLOCK_DIM)
 
-  return x
+  return y
