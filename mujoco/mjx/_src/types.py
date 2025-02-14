@@ -10,6 +10,7 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
 
 vec10 = vec10f
 
+# disable bits
 MJ_DSBL_CONSTRAINT = 1 << 0
 MJ_DSBL_EQUALITY = 1 << 1
 MJ_DSBL_FRICTIONLOSS = 1 << 2
@@ -26,6 +27,25 @@ MJ_DSBL_SENSOR = 1 << 12
 MJ_DSBL_MIDPHASE = 1 << 13
 MJ_DSBL_EULERDAMP = 1 << 14
 
+# gaintype
+MJ_GAINTYPE_FIXED = 0
+MJ_GAINTYPE_AFFINE = 1
+MJ_GAINTYPE_MUSCLE = 2
+# unsupported: USER
+
+# biastype
+MJ_BIASTYPE_NONE = 0
+MJ_BIASTYPE_AFFINE = 1
+MJ_BIASTYPE_MUSCLE = 2
+# unsupported: USER
+
+# dyntype
+MJ_DYNTYPE_NONE = 0
+MJ_DYNTYPE_INTEGRATOR = 1
+MJ_DYNTYPE_FILTER = 2
+MJ_DYNTYPE_FILTEREXACT = 3
+MJ_DYNTYPE_MUSCLE = 4
+# unsupported: USER
 
 @wp.struct
 class Option:

@@ -192,6 +192,14 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
 def implicit(m: types.Model, d: types.Data) -> types.Data:
   """Integrates fully implicit in velocity."""
   
+  # we might be able to exploit some sparsity here - 
+  # although setting to 0 is still needed somewhere.
+  #
+  # we only need to load ctrl if gain_vel is non zero.
+  # might make more sense to dispatch the load though 
+  # and throw it away later, because otherwise you'll 
+  # just introduce a tight dependency.
+  #
   @wp.kernel
   def actuator_bias_gain_vel(m: types.Model, d: types.Data):
     worldid, tid = wp.tid()
@@ -203,15 +211,15 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
     actuator_gaintype = m.actuator_gaintype[tid]
     actuator_dyntype = m.actuator_dyntype[tid]
 
-    if actuator_biastype == BiasType.AFFINE:
+    if actuator_biastype == types.MJ_BIASTYPE_AFFINE:
       bias_vel = m.actuator_biasprm[tid, 2]
 
-    if actuator_gaintype == GainType.AFFINE:
+    if actuator_gaintype == types.MJ_GAINTYPE_AFFINE:
       gain_vel = m.actuator_gainprm[tid, 2]
     
     ctrl = d.ctrl[worldid, tid]
 
-    if actuator_dyntype != DynType.NONE:
+    if actuator_dyntype != types.MJ_DYNTYPE_NONE:
       ctrl = d.act[worldid, tid]
 
     vel[worldid, tid] = bias_vel + gain_vel * ctrl
