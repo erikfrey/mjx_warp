@@ -222,14 +222,14 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
     qderiv[worldid, tid, tid] = qderiv[worldid, tid, tid] - m.dof_damping[tid]
 
   @wp.kernel
-  def subtract_qderiv_M(m: types.Model, m_temp: wp.array3d(dtype=wp.float32), qderiv: wp.array3d(dtype=wp.float32)):
+  def subtract_qderiv_M(m: types.Model, qderiv: wp.array3d(dtype=wp.float32), qM_integration: wp.array3d(dtype=wp.float32)):
     worldid, i, j = wp.tid()
-    m_temp[worldid, i, j] = m_temp[worldid, i, j] - m.opt.timestep * qderiv[worldid, i, j]
+    qM_integration[worldid, i, j] = qM_integration[worldid, i, j] - m.opt.timestep * qderiv[worldid, i, j]
 
   @wp.kernel
-  def sum_qfrc_smooth_constraint(m: types.Model, d: types.Data, qfrc_out: wp.array(dtype=wp.float32)):
+  def sum_qfrc_smooth_constraint(m: types.Model, d: types.Data):
     worldid, tid = wp.tid()
-    qfrc_out[worldid, tid] = d.qfrc_smooth[worldid, tid] + d.qfrc_constraint[worldid, tid]
+    d.qfrc_integration[worldid, tid] = d.qfrc_smooth[worldid, tid] + d.qfrc_constraint[worldid, tid]
 
   
   # do we need this here?
@@ -252,18 +252,17 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
     # TODO: tendon
     # TODO: fluid drag, not supported in MJX right now
 
-  wp.clone(qacc, d.qacc) 
+  wp.copy(d.qacc_integration, d.qacc) 
 
   if qderiv_filled:
     if (m.opt.is_sparse):
       pass #todo
     else:
-      qm_temp = wp.clone(d.qM)
-      wp.launch(subtract_qderiv_M, dim=(m.nworld, m.nv, m.nv), inputs=[m, qderiv, qm_temp])
+      wp.copy(d.qM_integration, d.qM)
+      wp.launch(subtract_qderiv_M, dim=(m.nworld, m.nv, m.nv), inputs=[m, qderiv, d.qM_integration])
     
-    qfrc = wp.zeros(shape=(m.nworld, m.nv), dtype=wp.float32)
-    qfrc = wp.launch(sum_qfrc_smooth_constraint, dim=(m.nworld, m.nv), inputs=[m, d, qfrc])
-    qLD_temp = smooth.factor_m(m, d, qM_temp, qLD_temp)
-    qacc = smooth.solve_m(m, d, dfrc, qacc)
+    wp.launch(sum_qfrc_smooth_constraint, dim=(m.nworld, m.nv), inputs=[m, d])
+    smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
+    smooth.solve_m(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qfrc_integration, d.qacc_integration)
 
-  return _advance(m, d, d.act_dot, qacc)
+  return _advance(m, d, d.act_dot, d.qacc_integration)
