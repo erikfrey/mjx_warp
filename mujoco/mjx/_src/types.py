@@ -28,6 +28,11 @@ MJ_DSBL_EULERDAMP = 1 << 14
 
 
 @wp.struct
+class Option:
+  gravity: wp.vec3
+  is_sparse: bool # warp only
+
+@wp.struct
 class Model:
   nq: int
   nv: int
@@ -48,6 +53,8 @@ class Model:
   qLD_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_updates: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
+  body_dofadr: wp.array(dtype=wp.int32, ndim=1)
+  body_dofnum: wp.array(dtype=wp.int32, ndim=1)
   body_jntadr: wp.array(dtype=wp.int32, ndim=1)
   body_jntnum: wp.array(dtype=wp.int32, ndim=1)
   body_parentid: wp.array(dtype=wp.int32, ndim=1)
@@ -79,7 +86,7 @@ class Model:
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
-  is_sparse: bool  # warp only
+  opt: Option
 
 
 @wp.struct
@@ -87,6 +94,7 @@ class Data:
   nworld: int
   time: float
   qpos: wp.array(dtype=wp.float32, ndim=2)
+  qvel: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
   xanchor: wp.array(dtype=wp.vec3, ndim=2)
@@ -116,3 +124,6 @@ class Data:
   qfrc_eulerdamp: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
+  cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
+  cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
+  qfrc_bias: wp.array(dtype=wp.float32, ndim=2)

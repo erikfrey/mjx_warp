@@ -280,24 +280,22 @@ def _factor_m_dense(m: types.Model, d: types.Data, block_dim: int = 32):
   BLOCK_DIM = block_dim
 
   @wp.kernel
-  def cholesky_factorization(m: types.Model, d: types.Data):
+  def cholesky(m: types.Model, d: types.Data):
     worldid = wp.tid()
     qM_tile = wp.tile_load(d.qM[worldid], shape=(TILE, TILE))
     qLD_tile = wp.tile_cholesky(qM_tile)
     wp.tile_store(d.qLD[worldid], qLD_tile)
 
-  wp.launch_tiled(cholesky_factorization, dim=(
-      d.nworld), inputs=[m, d], block_dim=BLOCK_DIM)
+  wp.launch_tiled(cholesky, dim=(d.nworld), inputs=[m, d], block_dim=BLOCK_DIM)
 
 
 def factor_m(m: types.Model, d: types.Data, block_dim: int = 32):
   """Factorizaton of inertia-like matrix M, assumed spd."""
 
-  if wp.static(m.is_sparse):
+  if wp.static(m.opt.is_sparse):
     _factor_m_sparse(m, d)
   else:
     _factor_m_dense(m, d, block_dim=block_dim)
-
 
 def solve_m(
     m: types.Model, d: types.Data, x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32), block_dim: int = 32
@@ -354,3 +352,62 @@ def solve_m(
     wp.launch_tiled(solve_m_dense, dim=(d.nworld), inputs=[d, x, y], block_dim=BLOCK_DIM)
 
   return y
+
+def rne(m: types.Model, d: types.Data):
+  """Computes inverse dynamics using Newton-Euler algorithm."""
+
+  cacc = wp.zeros(shape=(d.nworld, m.nbody), dtype=wp.spatial_vector)
+  cfrc = wp.zeros(shape=(d.nworld, m.nbody), dtype=wp.spatial_vector)
+
+  @wp.kernel
+  def cacc_gravity(m: types.Model, cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+    worldid = wp.tid()
+    cacc[worldid, 0] = wp.spatial_vector(wp.vec3(0.0), -m.opt.gravity)
+
+  @wp.kernel
+  def cacc_level(m: types.Model, d: types.Data, cacc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int):
+    worldid, nodeid = wp.tid()
+    bodyid = m.body_tree[leveladr + nodeid]
+    dofnum = m.body_dofnum[bodyid]
+    pid = m.body_parentid[bodyid]
+    dofadr = m.body_dofadr[bodyid]
+    local_cacc = cacc[worldid, pid]
+    for i in range(dofnum):
+      local_cacc += d.cdof_dot[worldid, dofadr + i] * d.qvel[worldid, dofadr + i]
+    cacc[worldid, bodyid] = local_cacc
+
+  @wp.kernel
+  def frc(d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+    worldid, bodyid = wp.tid()
+    tmp0 = math.inert_vec(d.cinert[worldid, bodyid], cacc[worldid, bodyid])
+    tmp1 = math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid])
+    tmp2 = math.motion_cross_force(d.cvel[worldid, bodyid], tmp1)
+    cfrc[worldid, bodyid] += tmp0 + tmp2
+
+  @wp.kernel
+  def cfrc_fn(m: types.Model, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int):
+    worldid, nodeid = wp.tid()
+    bodyid = m.body_tree[leveladr + nodeid]
+    pid = m.body_parentid[bodyid]
+    wp.atomic_add(cfrc[worldid], pid, cfrc[worldid, bodyid])
+
+  @wp.kernel
+  def qfrc_bias(m: types.Model, d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+    worldid, dofid = wp.tid()
+    bodyid = m.dof_bodyid[dofid]
+    d.qfrc_bias[worldid, dofid] = wp.dot(d.cdof[worldid, dofid], cfrc[worldid, bodyid])
+
+  leveladr, levelsize = m.body_leveladr.numpy(), m.body_levelsize.numpy()
+
+  wp.launch(cacc_gravity, dim=[d.nworld], inputs=[m, cacc])
+
+  for adr, size in zip(leveladr, levelsize):
+    wp.launch(cacc_level, dim=(d.nworld, size), inputs=[m, d, cacc, adr])
+
+  wp.launch(frc, dim=[d.nworld, m.nbody], inputs=[d, cfrc, cacc])
+
+  for i in range(len(leveladr) - 1, 0, -1):
+    adr, size = leveladr[i], levelsize[i]
+    wp.launch(cfrc_fn, dim=[d.nworld, size], inputs=[m, cfrc, adr])
+
+  wp.launch(qfrc_bias, dim=[d.nworld, m.nv], inputs=[m, d, cfrc])

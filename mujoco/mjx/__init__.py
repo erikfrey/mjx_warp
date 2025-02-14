@@ -8,6 +8,7 @@ from ._src.smooth import com_pos
 from ._src.smooth import crb
 from ._src.smooth import factor_m, solve_m
 from ._src.smooth import kinematics
+from ._src.smooth import rne
 from ._src.support import is_sparse
 from ._src.test_util import benchmark
 from ._src.types import *
