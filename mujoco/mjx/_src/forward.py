@@ -187,3 +187,65 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
     smooth.factor_m(m, d)
     d.qacc_eulerdamp = smooth.solve_m(m, d, d.qfrc_eulerdamp, d.qacc_eulerdamp)
   return _advance(m, d, d.act_dot, d.qacc_eulerdamp)
+
+def implicit(m: types.Model, d: types.Data) -> types.Data:
+  """Integrates fully implicit in velocity."""
+  
+  @wp.kernel
+  def actuator_bias_gain_vel(m: types.Model, d: types.Data):
+    worldid, tid = wp.tid()
+
+    bias_vel = 0.0
+    gain_vel = 0.0
+
+    actuator_biastype = m.actuator_biastype[tid]
+    actuator_gaintype = m.actuator_gaintype[tid]
+    actuator_dyntype = m.actuator_dyntype[tid]
+
+    if actuator_biastype == BiasType.AFFINE:
+      bias_vel = m.actuator_biasprm[tid, 2]
+
+    if actuator_gaintype == GainType.AFFINE:
+      gain_vel = m.actuator_gainprm[tid, 2]
+    
+    ctrl = d.ctrl[worldid, tid]
+
+    if actuator_dyntype != DynType.NONE:
+      ctrl = d.act[worldid, tid]
+
+    vel[worldid, tid] = bias_vel + gain_vel * ctrl
+
+  
+  qderiv = None
+
+  # qDeriv += d qfrc_actuator / d qvel
+  if not m.opt.disableflags & types.MJ_DSBL_ACTUATION:
+    vel = wp.zeros(shape=(m.nworld, m.nu), dtype=wp.float32) # todo: remove
+    wp.launch(actuator_bias_gain_vel, dim=(m.nworld, m.nu), inputs=[m, d, vel])
+    qderiv = d.actuator_moment.T @ jp.diag(vel) @ d.actuator_moment
+
+  # qDeriv += d qfrc_passive / d qvel
+  if not m.opt.disableflags & types.MJ_DSBL_PASSIVE
+
+  # qDeriv += d qfrc_passive / d qvel
+  if not m.opt.disableflags & DisableBit.PASSIVE:
+    if qderiv is None:
+      qderiv = -jp.diag(m.dof_damping)
+    else:
+      qderiv -= jp.diag(m.dof_damping)
+    if m.ntendon:
+      qderiv -= d.ten_J.T @ jp.diag(m.tendon_damping) @ d.ten_J
+    # TODO(robotics-simulation): fluid drag model
+    if m.opt.has_fluid_params:
+      raise NotImplementedError('fluid drag not supported for implicitfast')
+
+  qacc = d.qacc
+  if qderiv is not None:
+    # TODO(robotics-simulation): use smooth.factor_m / solve_m here:
+    qm = support.full_m(m, d) if support.is_sparse(m) else d.qM
+    qm -= m.opt.timestep * qderiv
+    qh, _ = jax.scipy.linalg.cho_factor(qm)
+    qfrc = d.qfrc_smooth + d.qfrc_constraint
+    qacc = jax.scipy.linalg.cho_solve((qh, False), qfrc)
+
+  return _advance(m, d, d.act_dot, qacc)
