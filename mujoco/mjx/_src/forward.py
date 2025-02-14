@@ -215,37 +215,54 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
 
     vel[worldid, tid] = bias_vel + gain_vel * ctrl
 
+  @wp.kernel
+  def qderiv_add_damping(m: types.Model, d: types.Data, qderiv: wp.array3d(dtype=wp.float32)):
+    worldid, tid = wp.tid()
+    qderiv[worldid, tid, tid] = qderiv[worldid, tid, tid] - m.dof_damping[tid]
+
+  @wp.kernel
+  def subtract_qderiv_M(m: types.Model, m_temp: wp.array3d(dtype=wp.float32), qderiv: wp.array3d(dtype=wp.float32)):
+    worldid, i, j = wp.tid()
+    m_temp[worldid, i, j] = m_temp[worldid, i, j] - m.opt.timestep * qderiv[worldid, i, j]
+
+  @wp.kernel
+  def sum_qfrc_smooth_constraint(m: types.Model, d: types.Data, qfrc_out: wp.array(dtype=wp.float32)):
+    worldid, tid = wp.tid()
+    qfrc_out[worldid, tid] = d.qfrc_smooth[worldid, tid] + d.qfrc_constraint[worldid, tid]
+
   
-  qderiv = None
+  # do we need this here?
+  qderiv = wp.zeros(shape=(m.nworld, m.nv, m.nv), dtype=wp.float32)
+  qderiv_filled = False
 
   # qDeriv += d qfrc_actuator / d qvel
   if not m.opt.disableflags & types.MJ_DSBL_ACTUATION:
     vel = wp.zeros(shape=(m.nworld, m.nu), dtype=wp.float32) # todo: remove
     wp.launch(actuator_bias_gain_vel, dim=(m.nworld, m.nu), inputs=[m, d, vel])
+    qderiv_filled = True
+
     qderiv = d.actuator_moment.T @ jp.diag(vel) @ d.actuator_moment
 
   # qDeriv += d qfrc_passive / d qvel
-  if not m.opt.disableflags & types.MJ_DSBL_PASSIVE
+  if not m.opt.disableflags & types.MJ_DSBL_PASSIVE:
+    # add damping to qderiv
+    wp.launch(qderiv_add_damping, dim=(m.nworld, m.nv), inputs=[m, d, qderiv])
+    qderiv_filled = True
+    # TODO: tendon
+    # TODO: fluid drag, not supported in MJX right now
 
-  # qDeriv += d qfrc_passive / d qvel
-  if not m.opt.disableflags & DisableBit.PASSIVE:
-    if qderiv is None:
-      qderiv = -jp.diag(m.dof_damping)
+  wp.clone(qacc, d.qacc) 
+
+  if qderiv_filled:
+    if (m.opt.is_sparse):
+      pass #todo
     else:
-      qderiv -= jp.diag(m.dof_damping)
-    if m.ntendon:
-      qderiv -= d.ten_J.T @ jp.diag(m.tendon_damping) @ d.ten_J
-    # TODO(robotics-simulation): fluid drag model
-    if m.opt.has_fluid_params:
-      raise NotImplementedError('fluid drag not supported for implicitfast')
-
-  qacc = d.qacc
-  if qderiv is not None:
-    # TODO(robotics-simulation): use smooth.factor_m / solve_m here:
-    qm = support.full_m(m, d) if support.is_sparse(m) else d.qM
-    qm -= m.opt.timestep * qderiv
-    qh, _ = jax.scipy.linalg.cho_factor(qm)
-    qfrc = d.qfrc_smooth + d.qfrc_constraint
-    qacc = jax.scipy.linalg.cho_solve((qh, False), qfrc)
+      qm_temp = wp.clone(d.qM)
+      wp.launch(subtract_qderiv_M, dim=(m.nworld, m.nv, m.nv), inputs=[m, qderiv, qm_temp])
+    
+    qfrc = wp.zeros(shape=(m.nworld, m.nv), dtype=wp.float32)
+    qfrc = wp.launch(sum_qfrc_smooth_constraint, dim=(m.nworld, m.nv), inputs=[m, d, qfrc])
+    qLD_temp = smooth.factor_m(m, d, qM_temp, qLD_temp)
+    qacc = smooth.solve_m(m, d, dfrc, qacc)
 
   return _advance(m, d, d.act_dot, qacc)
