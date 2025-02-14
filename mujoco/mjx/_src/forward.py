@@ -170,23 +170,24 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
 
       if (wp.static(is_sparse)):
         dof_Madr = m.dof_Madr[tid]
-        d.qM[worldId, 0, dof_Madr] += m.timestep * m.dof_damping[dof_Madr]
+        d.qM_integration[worldId, 0, dof_Madr] += m.timestep * m.dof_damping[dof_Madr]
       else:
-        d.qM[worldId, tid, tid] += m.timestep * m.dof_damping[tid]
+        d.qM_integration[worldId, tid, tid] += m.timestep * m.dof_damping[tid]
 
-      d.qfrc_eulerdamp[worldId, tid] = (
+      d.qfrc_integration[worldId, tid] = (
           d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
       )
     
     wp.launch(add_damping_sum_qfrc_kernel, dim=(d.nworld, m.nv), inputs=[m, d])
 
-  wp.copy(d.qacc_eulerdamp, d.qacc)
+  wp.copy(d.qacc_integration, d.qacc)
+  wp.copy(d.qM_integration, d.qM) # might be better to do a dense kernel and add damping there.
 
   if not m.opt.disableflags & types.MJ_DSBL_EULERDAMP:    
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
-    smooth.factor_m(m, d)
-    d.qacc_eulerdamp = smooth.solve_m(m, d, d.qfrc_eulerdamp, d.qacc_eulerdamp)
-  return _advance(m, d, d.act_dot, d.qacc_eulerdamp)
+    smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
+    smooth.solve_m(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qfrc_integration, d.qacc_integration)
+  return _advance(m, d, d.act_dot, d.qacc_integration)
 
 def implicit(m: types.Model, d: types.Data) -> types.Data:
   """Integrates fully implicit in velocity."""

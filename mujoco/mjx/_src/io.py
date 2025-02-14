@@ -138,10 +138,15 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.cvel = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
   d.cdof_dot = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
   d.qfrc_bias = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.qfrc_eulerdamp = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.qacc_eulerdamp = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+
+  # internal tmp arrays
+  d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qM_integration = wp.empty_like(d.qM)
+  d.qLD_integration = wp.empty_like(d.qLD)
+  d.qLDiagInv_integration = wp.empty_like(d.qLDiagInv)
 
   return d
 
@@ -199,8 +204,11 @@ def put_data(
       tile_fn(mjd.qfrc_constraint), dtype=wp.float32, ndim=2
   )
 
-  # warp only temp arrays
-  d.qfrc_eulerdamp = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.qacc_eulerdamp = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  # internal tmp arrays
+  d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qM_integration = wp.empty_like(d.qM)
+  d.qLD_integration = wp.empty_like(d.qLD)
+  d.qLDiagInv_integration = wp.empty_like(d.qLDiagInv)
 
   return d
