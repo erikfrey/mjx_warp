@@ -31,6 +31,7 @@ MJ_DSBL_EULERDAMP = 1 << 14
 class Option:
   gravity: wp.vec3
   is_sparse: bool # warp only
+  disableflags: int
 
 @wp.struct
 class Model:
@@ -44,7 +45,6 @@ class Model:
   nmocap: int
   nlevel: int  # warp only
   timestep: float
-  disable_flags: int
   nM: int
   qpos0: wp.array(dtype=wp.float32, ndim=1)
   body_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
