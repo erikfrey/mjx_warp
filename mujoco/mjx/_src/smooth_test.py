@@ -83,7 +83,7 @@ class SmoothTest(parameterized.TestCase):
     for arr in (d.qLD, d.qLDiagInv):
       arr.zero_()
 
-    mjx.factor_m(m, d)
+    mjx.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv)
     _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, 'qLD (sparse)')
     _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, 'qLDiagInv')
 
@@ -95,7 +95,7 @@ class SmoothTest(parameterized.TestCase):
     qLD = d.qLD.numpy()[0].copy()
     d.qLD.zero_()
 
-    mjx.factor_m(m, d)
+    mjx.factor_m(m, d, d.qM, d.qLD)
     _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
 
   @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
@@ -119,7 +119,7 @@ class SmoothTest(parameterized.TestCase):
 
     # re-run the factorization
     mujoco.mj_factorM(mjm, mjd)
-    mjx.factor_m(m, d)
+    mjx.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv)
 
     _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, 'qLD (sparse)')
 
@@ -128,7 +128,7 @@ class SmoothTest(parameterized.TestCase):
     mujoco.mju_zero(mjd.qacc_smooth)
 
     # run the solve
-    d.qacc_smooth = mjx.solve_m(m, d, d.qfrc_smooth, d.qacc_smooth)
+    mjx.solve_m(m, d, d.qLD, d.qLDiagInv, d.qfrc_smooth, d.qacc_smooth)
     mujoco.mj_solveM(mjm, mjd, mjd.qacc_smooth.reshape(1, mjm.nv), mjd.qfrc_smooth.reshape(1, mjm.nv)) # why is the order of arguments different here?
 
     _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (sparse)')
@@ -145,7 +145,7 @@ class SmoothTest(parameterized.TestCase):
 
     # cholesky factor for both
     qLD = np.linalg.cholesky(qM, upper=True)
-    mjx.factor_m(m, d)
+    mjx.factor_m(m, d, d.qM, d.qLD)
 
     # sanity comparison
     _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
@@ -155,7 +155,7 @@ class SmoothTest(parameterized.TestCase):
     mujoco.mju_zero(mjd.qacc_smooth)
 
     # solve
-    d.qacc_smooth = mjx.solve_m(m, d, d.qfrc_smooth, d.qacc_smooth)
+    mjx.solve_m(m, d, d.qLD, d.qLDiagInv, d.qfrc_smooth, d.qacc_smooth)
     mjd.qacc_smooth = sp.linalg.cho_solve((qLD, False), mjd.qfrc_smooth)
     
     _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (dense)')

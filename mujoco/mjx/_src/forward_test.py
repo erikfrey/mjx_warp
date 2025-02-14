@@ -51,7 +51,7 @@ class ForwardTest(absltest.TestCase):
     mjx.euler(m, d)
     mujoco.mj_Euler(mjm, mjd)
 
-    #_assert_eq(d.qpos.numpy()[0], mjd.qpos, 'qpos')
+    #_assert_eq(d.qpos.numpy()[0], mjd.qpos, 'qpos') more tolerance makes this one pass
     _assert_eq(d.act.numpy()[0], mjd.act, 'act')
 
   def test_disable_eulerdamp(self):
