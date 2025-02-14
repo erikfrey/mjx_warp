@@ -345,7 +345,7 @@ def solve_m(
         madr_ij += 1
         j = m.dof_parentid[j]
 
-  if (m.is_sparse):
+  if (m.opt.is_sparse):
     wp.copy(y, x)
     wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, d, y])
   else:

@@ -108,10 +108,10 @@ class SmoothTest(parameterized.TestCase):
     mjx.rne(m, d)
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, 'qfrc_bias')
 
-
-  def test_solve_m_sparse(self):
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
+  def test_solve_m_sparse(self, fname):
     """Tests solveM (sparse)"""
-    mjm, mjd, m, d = self._humanoid()
+    mjm, mjd, m, d = self._load(fname)
 
     # zero the factorization
     mujoco.mju_zero(mjd.qLD)
@@ -133,9 +133,10 @@ class SmoothTest(parameterized.TestCase):
 
     _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (sparse)')
 
-  def test_solve_m_dense(self):
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
+  def test_solve_m_dense(self, fname):
     """Tests solveM (sparse)"""
-    mjm, mjd, m, d = self._humanoid(is_sparse=False)
+    mjm, mjd, m, d = self._load(fname, is_sparse=False)
 
     # construct dense M for comparison
     qM = np.zeros((mjm.nv, mjm.nv))

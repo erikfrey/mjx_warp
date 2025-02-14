@@ -183,7 +183,7 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
   wp.copy(d.qacc_eulerdamp, d.qacc)
 
   if not m.disable_flags & types.MJ_DSBL_EULERDAMP:    
-    add_damping_sum_qfrc(m, d, m.is_sparse)
+    add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_m(m, d)
     d.qacc_eulerdamp = smooth.solve_m(m, d, d.qfrc_eulerdamp, d.qacc_eulerdamp)
   return _advance(m, d, d.act_dot, d.qacc_eulerdamp)
