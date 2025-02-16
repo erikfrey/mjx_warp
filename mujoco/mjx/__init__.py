@@ -2,6 +2,7 @@
 
 from ._src.forward import fwd_acceleration
 from ._src.forward import fwd_position
+from ._src.forward import fwd_velocity
 from ._src.io import make_data
 from ._src.io import put_data
 from ._src.io import put_model
