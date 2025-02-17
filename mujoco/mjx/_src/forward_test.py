@@ -103,5 +103,4 @@ class ForwardTest(parameterized.TestCase):
 
 if __name__ == '__main__':
   wp.init()
-  wp.config.verify_cuda = True
   absltest.main()
