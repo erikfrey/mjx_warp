@@ -1,10 +1,14 @@
 """Public API for MJX."""
 
 from ._src.forward import euler
+from ._src.forward import fwd_acceleration
+from ._src.forward import fwd_position
 from ._src.io import make_data
 from ._src.io import put_data
 from ._src.io import put_model
+from ._src.passive import passive
 from ._src.smooth import com_pos
+from ._src.smooth import com_vel
 from ._src.smooth import crb
 from ._src.smooth import factor_m, solve_m
 from ._src.smooth import kinematics

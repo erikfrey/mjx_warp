@@ -1,7 +1,5 @@
-from typing import Optional
-
 import warp as wp
-
+from typing import Optional
 from . import math
 from . import smooth
 from . import types
@@ -188,3 +186,48 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
     smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_m(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qfrc_integration, d.qacc_integration)
   return _advance(m, d, d.act_dot, d.qacc_integration)
+def fwd_position(m: types.Model, d: types.Data):
+  """Position-dependent computations."""
+
+  smooth.kinematics(m, d)
+  smooth.com_pos(m, d)
+  # TODO(team): smooth.camlight
+  # TODO(team): smooth.tendon
+  smooth.crb(m, d)
+  smooth.factor_m(m, d)
+  # TODO(team): collision_driver.collision
+  # TODO(team): constraint.make_constraint
+  # TODO(team): smooth.transmission
+
+
+def fwd_acceleration(m: types.Model, d: types.Data):
+  """Add up all non-constraint forces, compute qacc_smooth."""
+
+  qfrc_applied = d.qfrc_applied
+  # TODO(team) += support.xfrc_accumulate(m, d)
+
+  @wp.kernel
+  def _qfrc_smooth(d: types.Data, qfrc_applied: wp.array(ndim=2, dtype=wp.float32)):
+    worldid, dofid = wp.tid()
+    d.qfrc_smooth[worldid, dofid] = d.qfrc_passive[worldid, dofid] - d.qfrc_bias[worldid, dofid] + d.qfrc_actuator[worldid, dofid] + qfrc_applied[worldid, dofid]
+
+  wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
+
+  smooth.solve_m(m, d, d.qfrc_smooth, d.qacc_smooth)
+
+
+def forward(m: types.Model, d: type.Data):
+  """Forward dynamics."""
+
+  fwd_position(m, d)
+  # TODO(team): sensor.sensor_pos
+  # TODO(taylorhowell): fwd_velocity
+  # TODO(team): sensor.sensor_vel
+  # TODO(team): fwd_actuation
+  fwd_acceleration(m, d)
+  # TODO(team): sensor.sensor_acc
+
+  # if nefc == 0
+  wp.copy(d.qacc, d.qacc_smooth)
+
+  # TODO(team): solver.solve

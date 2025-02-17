@@ -44,13 +44,25 @@ def kinematics(m: types.Model, d: types.Data):
       for _ in range(jntnum):
         qadr = m.jnt_qposadr[jntadr]
         jnt_type = m.jnt_type[jntadr]
+        jnt_axis = m.jnt_axis[jntadr]
         xanchor = math.rot_vec_quat(m.jnt_pos[jntadr], xquat) + xpos
-        xaxis = math.rot_vec_quat(m.jnt_axis[jntadr], xquat)
+        xaxis = math.rot_vec_quat(jnt_axis, xquat)
 
-        if jnt_type == 3:  # hinge
-          qloc = math.axis_angle_to_quat(
-              m.jnt_axis[jntadr], d.qpos[worldid, qadr] - m.qpos0[qadr]
+        if jnt_type == 1:  # ball
+          qloc = wp.quat(
+            d.qpos[worldid, qadr + 0],
+            d.qpos[worldid, qadr + 1],
+            d.qpos[worldid, qadr + 2],
+            d.qpos[worldid, qadr + 3],
           )
+          xquat = math.mul_quat(xquat, qloc)
+          # correct for off-center rotation
+          xpos = xanchor - math.rot_vec_quat(m.jnt_pos[jntadr], xquat)
+        elif jnt_type == 2:  # slide
+          xpos += xaxis * (d.qpos[worldid, qadr] - m.qpos0[qadr])
+        elif jnt_type == 3:  # hinge
+          qpos0 = m.qpos0[qadr]
+          qloc = math.axis_angle_to_quat(jnt_axis, d.qpos[worldid, qadr] - qpos0)
           xquat = math.mul_quat(xquat, qloc)
           # correct for off-center rotation
           xpos = xanchor - math.rot_vec_quat(m.jnt_pos[jntadr], xquat)
@@ -215,16 +227,8 @@ def crb(m: types.Model, d: types.Data):
     d.qM[worldid, 0, madr_ij] = m.dof_armature[dofid]
 
     # precompute buf = crb_body_i * cdof_i
-    i = d.crb[worldid, bodyid]
-    v = d.cdof[worldid, dofid]
-    # multiply 6D vector (rotation, translation) by 6D inertia matrix (mju_mulInertVec)
-    buf = wp.spatial_vector()
-    buf[0] = i[0] * v[0] + i[3] * v[1] + i[4] * v[2] - i[8] * v[4] + i[7] * v[5]
-    buf[1] = i[3] * v[0] + i[1] * v[1] + i[5] * v[2] + i[8] * v[3] - i[6] * v[5]
-    buf[2] = i[4] * v[0] + i[5] * v[1] + i[2] * v[2] - i[7] * v[3] + i[6] * v[4]
-    buf[3] = i[8] * v[1] - i[7] * v[2] + i[9] * v[3]
-    buf[4] = i[6] * v[2] - i[8] * v[0] + i[9] * v[4]
-    buf[5] = i[7] * v[0] - i[6] * v[1] + i[9] * v[5]
+    buf = math.inert_vec(d.crb[worldid, bodyid], d.cdof[worldid, dofid])
+
     # sparse backward pass over ancestors
     while dofid >= 0:
       d.qM[worldid, 0, madr_ij] += wp.dot(d.cdof[worldid, dofid], buf)
@@ -247,7 +251,7 @@ def _factor_m_sparse(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array,
   @wp.kernel
   def qLD_acc(m: types.Model, qLD: wp.array3d(dtype=wp.float32), leveladr: int):
     worldid, nodeid = wp.tid()
-    update = m.qLD_updates[leveladr + nodeid]
+    update = m.qLD_sparse_updates[leveladr + nodeid]
     i, k, Madr_ki = update[0], update[1], update[2]
     Madr_i = m.dof_Madr[i]
     # tmp = M(k,i) / M(k,k)
@@ -273,30 +277,40 @@ def _factor_m_sparse(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array,
 
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, qLD, qLDiagInv])
 
-def _factor_m_dense(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array, block_dim: int = 32):
+
+def _factor_m_dense(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array):
   """Dense Cholesky factorizaton of inertia-like matrix M, assumed spd."""
 
-  TILE = m.nv
-  BLOCK_DIM = block_dim
+  # TODO(team): develop heuristic for block dim, or make configurable
+  block_dim = 32
 
-  @wp.kernel
-  def cholesky(qM: wp.array3d(dtype=wp.float32), qLD: wp.array3d(dtype=wp.float32)):
-    worldid = wp.tid()
-    qM_tile = wp.tile_load(qM[worldid], shape=(TILE, TILE))
-    qLD_tile = wp.tile_cholesky(qM_tile)
-    wp.tile_store(qLD[worldid], qLD_tile)
+  def cholesky(m, d, qM, qLD, adr, size, tilesize):
 
-  wp.launch_tiled(cholesky, dim=(d.nworld), inputs=[qM, qLD], block_dim=BLOCK_DIM)
+    @wp.kernel
+    def cholesky(m: types.Model, leveladr: int):
+      worldid, nodeid = wp.tid()
+      dofid = m.qLD_dense_tileid[leveladr + nodeid]
+      qM_tile = wp.tile_load(qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
+      qLD_tile = wp.tile_cholesky(qM_tile)
+      wp.tile_store(qLD[worldid], qLD_tile, offset=(dofid, dofid))
+
+    wp.launch_tiled(cholesky, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=block_dim)
+
+  leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
+  tilesize = m.qLD_dense_tilesize.numpy()
+
+  for i in range(len(leveladr)):
+    cholesky(leveladr[i], levelsize[i], int(tilesize[i]))
 
 
-def factor_m(m: types.Model, d: types.Data, qM: wp.array3d, qLD: wp.array3d, qLDiagInv: wp.array = None, block_dim: int = 32):
+def factor_m(m: types.Model, d: types.Data, qM, qLD, qLDiagInv):
   """Factorizaton of inertia-like matrix M, assumed spd."""
 
   if wp.static(m.opt.is_sparse):
     assert qLDiagInv is not None
     _factor_m_sparse(m, d, qM, qLD, qLDiagInv)
   else:
-    _factor_m_dense(m, d, qM, qLD, block_dim=block_dim)
+    _factor_m_dense(m, d, qM, qLD)
 
 def solve_m(
     m: types.Model, d: types.Data, qLD: wp.array, qLDiagInv: wp.array, x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32), block_dim: int = 32
@@ -364,7 +378,12 @@ def rne(m: types.Model, d: types.Data):
     cacc[worldid, 0] = wp.spatial_vector(wp.vec3(0.0), -m.opt.gravity)
 
   @wp.kernel
-  def cacc_level(m: types.Model, d: types.Data, cacc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int):
+  def cacc_level(
+    m: types.Model,
+    d: types.Data,
+    cacc: wp.array(dtype=wp.spatial_vector, ndim=2),
+    leveladr: int,
+  ):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
     dofnum = m.body_dofnum[bodyid]
@@ -376,22 +395,25 @@ def rne(m: types.Model, d: types.Data):
     cacc[worldid, bodyid] = local_cacc
 
   @wp.kernel
-  def frc(d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+  def frc_fn(d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
     worldid, bodyid = wp.tid()
-    tmp0 = math.inert_vec(d.cinert[worldid, bodyid], cacc[worldid, bodyid])
-    tmp1 = math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid])
-    tmp2 = math.motion_cross_force(d.cvel[worldid, bodyid], tmp1)
-    cfrc[worldid, bodyid] += tmp0 + tmp2
+    frc = math.inert_vec(d.cinert[worldid, bodyid], cacc[worldid, bodyid])
+    frc += math.motion_cross_force(d.cvel[worldid, bodyid], math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid]))
+    cfrc[worldid, bodyid] += frc
 
   @wp.kernel
-  def cfrc_fn(m: types.Model, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int):
+  def cfrc_fn(
+    m: types.Model, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int
+  ):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
     pid = m.body_parentid[bodyid]
     wp.atomic_add(cfrc[worldid], pid, cfrc[worldid, bodyid])
 
   @wp.kernel
-  def qfrc_bias(m: types.Model, d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+  def qfrc_bias(
+    m: types.Model, d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)
+  ):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
     d.qfrc_bias[worldid, dofid] = wp.dot(d.cdof[worldid, dofid], cfrc[worldid, bodyid])
@@ -403,10 +425,91 @@ def rne(m: types.Model, d: types.Data):
   for adr, size in zip(leveladr, levelsize):
     wp.launch(cacc_level, dim=(d.nworld, size), inputs=[m, d, cacc, adr])
 
-  wp.launch(frc, dim=[d.nworld, m.nbody], inputs=[d, cfrc, cacc])
+  wp.launch(frc_fn, dim=[d.nworld, m.nbody], inputs=[d, cfrc, cacc])
 
   for i in range(len(leveladr) - 1, 0, -1):
     adr, size = leveladr[i], levelsize[i]
     wp.launch(cfrc_fn, dim=[d.nworld, size], inputs=[m, cfrc, adr])
 
   wp.launch(qfrc_bias, dim=[d.nworld, m.nv], inputs=[m, d, cfrc])
+
+
+def com_vel(m: types.Model, d: types.Data):
+  """Computes cvel, cdof_dot."""
+
+  @wp.kernel
+  def _root(d: types.Data):
+    worldid, elementid = wp.tid()
+    d.cvel[worldid, 0][elementid] = 0.0
+
+  @wp.kernel
+  def _level(m: types.Model, d: types.Data, leveladr: int):
+    worldid, nodeid = wp.tid()
+    bodyid = m.body_tree[leveladr + nodeid]
+    dofid = m.body_dofadr[bodyid]
+    jntid = m.body_jntadr[bodyid]
+    jntnum = m.body_jntnum[bodyid]
+    pid = m.body_parentid[bodyid]
+
+    if jntnum == 0:
+      d.cvel[worldid, bodyid] = d.cvel[worldid, pid]
+      return
+    
+    cvel = d.cvel[worldid, pid]
+    qvel = d.qvel[worldid]
+    cdof = d.cdof[worldid]
+
+    for j in range(jntid, jntid + jntnum):
+      jnttype = m.jnt_type[j]
+
+      if jnttype == 0:  # free
+        cvel += cdof[dofid + 0] * qvel[dofid + 0]
+        cvel += cdof[dofid + 1] * qvel[dofid + 1]
+        cvel += cdof[dofid + 2] * qvel[dofid + 2]
+
+        d.cdof_dot[worldid, dofid + 3] = math.motion_cross(cvel, cdof[dofid + 3])
+        d.cdof_dot[worldid, dofid + 4] = math.motion_cross(cvel, cdof[dofid + 4])
+        d.cdof_dot[worldid, dofid + 5] = math.motion_cross(cvel, cdof[dofid + 5])
+
+        cvel += cdof[dofid + 3] * qvel[dofid + 3]
+        cvel += cdof[dofid + 4] * qvel[dofid + 4]
+        cvel += cdof[dofid + 5] * qvel[dofid + 5]
+
+        dofid += 6
+      elif jnttype == 1: # ball
+        d.cdof_dot[worldid, dofid + 0] = math.motion_cross(cvel, cdof[dofid + 0])
+        d.cdof_dot[worldid, dofid + 1] = math.motion_cross(cvel, cdof[dofid + 1])
+        d.cdof_dot[worldid, dofid + 2] = math.motion_cross(cvel, cdof[dofid + 2])
+
+        cvel += cdof[dofid + 0] * qvel[dofid + 0]
+        cvel += cdof[dofid + 1] * qvel[dofid + 1]
+        cvel += cdof[dofid + 2] * qvel[dofid + 2]
+
+        dofid += 3
+      else:
+        d.cdof_dot[worldid, dofid] = math.motion_cross(cvel, cdof[dofid])
+        cvel += cdof[dofid] * qvel[dofid]
+
+        dofid += 1
+
+    d.cvel[worldid, bodyid] = cvel
+
+  wp.launch(_root, dim=(d.nworld, 6), inputs=[d])
+  for adr, size in zip(m.body_leveladr.numpy()[1:], m.body_levelsize.numpy()[1:]):
+    wp.launch(_level, dim=(d.nworld, size), inputs=[m, d, adr])
+
+
+def solve_m(m: types.Model, d: types.Data, input: wp.array(ndim=2, dtype=wp.float32), output: wp.array(ndim=2, dtype=wp.float32)):
+  """Computes backsubstitution."""
+
+  TILE = m.nv
+
+  @wp.kernel
+  def cholesky(d: types.Data, input: wp.array(ndim=2, dtype=wp.float32), output: wp.array(ndim=2, dtype=wp.float32)):
+    worldid = wp.tid()
+    input_tile = wp.tile_load(input[worldid], shape=TILE)
+    qLD_tile = wp.tile_load(d.qLD[worldid], shape=(TILE, TILE))
+    output_tile = wp.tile_cholesky_solve(qLD_tile, input_tile)
+    wp.tile_store(output[worldid], output_tile)
+
+  wp.launch_tiled(cholesky, dim=(d.nworld), inputs=[d, input, output], block_dim=32)
