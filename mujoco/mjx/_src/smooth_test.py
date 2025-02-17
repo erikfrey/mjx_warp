@@ -2,7 +2,6 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from etils import epath
 import numpy as np
 import scipy as sp
 import warp as wp

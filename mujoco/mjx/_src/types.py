@@ -132,14 +132,15 @@ class Data:
   cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
   cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
   qfrc_bias: wp.array(dtype=wp.float32, ndim=2)
-
-  # temp arrays
-  qM_integration: wp.array(dtype=wp.float32, ndim=3)
-  qLD_integration: wp.array(dtype=wp.float32, ndim=3)
-  qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)
   qfrc_passive: wp.array(dtype=wp.float32, ndim=2)
   qfrc_spring: wp.array(dtype=wp.float32, ndim=2)
   qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
+
+  # temp arrays
+  qM_integration: wp.array(dtype=wp.float32, ndim=3)
+  qLD_integration: wp.array(dtype=wp.float32, ndim=3)
+  qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)
+  

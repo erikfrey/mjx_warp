@@ -186,6 +186,7 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
     smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_m(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qfrc_integration, d.qacc_integration)
   return _advance(m, d, d.act_dot, d.qacc_integration)
+
 def fwd_position(m: types.Model, d: types.Data):
   """Position-dependent computations."""
 
