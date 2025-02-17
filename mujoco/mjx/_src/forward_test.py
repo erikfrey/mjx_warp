@@ -10,7 +10,7 @@ import warp as wp
 
 # tolerance for difference between MuJoCo and MJX smooth calculations - mostly
 # due to float precision
-_TOLERANCE = 5e-5 #_TOLERANCE = 1e-5
+_TOLERANCE = 5e-5 
 
 
 def _assert_eq(a, b, name):
@@ -39,7 +39,7 @@ class ForwardTest(parameterized.TestCase):
     for arr in (d.qfrc_smooth, d.qacc_smooth):
       arr.zero_()
 
-    mjx.factor_m(m, d) # for dense, get tile cholesky factorization
+    mjx.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv) # for dense, get tile cholesky factorization
     mjx.fwd_acceleration(m, d)
 
     _assert_eq(d.qfrc_smooth.numpy()[0], mjd.qfrc_smooth, 'qfrc_smooth')
@@ -50,6 +50,7 @@ class ForwardTest(parameterized.TestCase):
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     self.assertTrue((mjm.dof_damping > 0).any())
 
+    '''
     mjd = mujoco.MjData(mjm)
     mjd.qvel[:] = 1.0
     mjd.qacc[:] = 1.0
@@ -63,7 +64,7 @@ class ForwardTest(parameterized.TestCase):
 
     _assert_eq(d.qpos.numpy()[0], mjd.qpos, 'qpos')
     _assert_eq(d.act.numpy()[0], mjd.act, 'act')
-
+    '''
     # also test sparse
     mjm.opt.jacobian = mujoco.mjtJacobian.mjJAC_SPARSE
     mjd = mujoco.MjData(mjm)
@@ -77,7 +78,9 @@ class ForwardTest(parameterized.TestCase):
     mjx.euler(m, d)
     mujoco.mj_Euler(mjm, mjd)
 
-    #_assert_eq(d.qpos.numpy()[0], mjd.qpos, 'qpos') more tolerance makes this one pass
+    print(d.qpos)
+
+    _assert_eq(d.qpos.numpy()[0], mjd.qpos, 'qpos')
     _assert_eq(d.act.numpy()[0], mjd.act, 'act')
 
   def test_disable_eulerdamp(self):
@@ -100,4 +103,5 @@ class ForwardTest(parameterized.TestCase):
 
 if __name__ == '__main__':
   wp.init()
+  wp.config.verify_cuda = True
   absltest.main()

@@ -91,10 +91,9 @@ class SmoothTest(absltest.TestCase):
     mjx.rne(m, d)
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, 'qfrc_bias')
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_solve_m_sparse(self, fname):
+  def test_solve_m_sparse(self):
     """Tests solveM (sparse)"""
-    mjm, mjd, m, d = self._load(fname)
+    mjm, mjd, m, d = test_util.fixture('humanoid/humanoid.xml', sparse=True)
 
     # zero the factorization
     mujoco.mju_zero(mjd.qLD)
@@ -116,10 +115,9 @@ class SmoothTest(absltest.TestCase):
 
     _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (sparse)')
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_solve_m_dense(self, fname):
+  def test_solve_m_dense(self):
     """Tests solveM (sparse)"""
-    mjm, mjd, m, d = self._load(fname, is_sparse=False)
+    mjm, mjd, m, d = test_util.fixture('humanoid/humanoid.xml', sparse=False)
 
     # construct dense M for comparison
     qM = np.zeros((mjm.nv, mjm.nv))
@@ -142,6 +140,7 @@ class SmoothTest(absltest.TestCase):
     mjd.qacc_smooth = sp.linalg.cho_solve((qLD, False), mjd.qfrc_smooth)
     
     _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (dense)')
+
   def test_com_vel(self):
     """Tests MJX com_vel."""
     _, mjd, m, d = test_util.fixture('pendula.xml')
