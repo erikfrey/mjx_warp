@@ -18,9 +18,10 @@ import time
 from typing import Callable, Tuple
 
 from etils import epath
-import mujoco
 import numpy as np
 import warp as wp
+
+import mujoco
 
 from . import io
 from . import types

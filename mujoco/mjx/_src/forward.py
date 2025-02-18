@@ -3,8 +3,10 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-import warp as wp
 from typing import Optional
+
+import warp as wp
+
 from . import math
 from . import passive
 from . import smooth

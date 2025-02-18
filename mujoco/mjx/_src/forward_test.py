@@ -7,10 +7,11 @@
 
 from absl.testing import absltest
 from etils import epath
-import mujoco
-from mujoco import mjx
 import numpy as np
 import warp as wp
+
+import mujoco
+from mujoco import mjx
 
 # tolerance for difference between MuJoCo and MJX smooth calculations - mostly
 # due to float precision

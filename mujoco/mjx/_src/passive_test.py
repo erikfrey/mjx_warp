@@ -1,9 +1,10 @@
 """Tests for passive force functions."""
 
 from absl.testing import absltest
-from mujoco import mjx
 import numpy as np
 import warp as wp
+
+from mujoco import mjx
 
 from . import test_util
 
