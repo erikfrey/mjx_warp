@@ -1,3 +1,8 @@
+# Copyright (c) 2025, The Physics-Next Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import warp as wp
 
 import mujoco

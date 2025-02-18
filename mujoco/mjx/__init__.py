@@ -1,3 +1,8 @@
+# Copyright (c) 2025, The Physics-Next Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Public API for MJX."""
 
 from ._src.forward import euler

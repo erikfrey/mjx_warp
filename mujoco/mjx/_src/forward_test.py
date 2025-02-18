@@ -1,3 +1,8 @@
+# Copyright (c) 2025, The Physics-Next Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for forward dynamics functions."""
 
 from absl.testing import absltest
