@@ -154,9 +154,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   else:
     d.qM = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
     d.qLD = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
-  d.qacc = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.act_dot = wp.zeros((nworld, mjm.na), dtype=wp.float32)
-  d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.act = wp.zeros((nworld, mjm.na), dtype=wp.float32)
   d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.actuator_velocity = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
