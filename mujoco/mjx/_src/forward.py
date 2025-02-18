@@ -148,28 +148,36 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
 
   def add_damping_sum_qfrc(m: types.Model, d: types.Data, is_sparse: bool):
     @wp.kernel
-    def add_damping_sum_qfrc_kernel(m: types.Model, d: types.Data):
+    def add_damping_sum_qfrc_kernel_sparse(m: types.Model, d: types.Data):
       worldId, tid = wp.tid()
 
-      if wp.static(is_sparse):
-        dof_Madr = m.dof_Madr[tid]
-        d.qM_integration[worldId, 0, dof_Madr] += m.opt.timestep * m.dof_damping[dof_Madr]
-      else:
-        d.qM_integration[worldId, tid, tid] += m.opt.timestep * m.dof_damping[tid]
+      dof_Madr = m.dof_Madr[tid]
+      d.qM_integration[worldId, 0, dof_Madr] += m.opt.timestep * m.dof_damping[dof_Madr]
 
       d.qfrc_integration[worldId, tid] = (
         d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
       )
 
-    wp.launch(add_damping_sum_qfrc_kernel, dim=(d.nworld, m.nv), inputs=[m, d])
+    @wp.kernel
+    def add_damping_sum_qfrc_kernel_dense(m: types.Model, d: types.Data):
+      worldid, i, j = wp.tid()
+
+      damping = wp.select(i == j, 0.0, m.opt.timestep * m.dof_damping[i])
+      d.qM_integration[worldid, i, j] = d.qM[worldid, i, j] + damping
+
+      if i == 0:
+        d.qfrc_integration[worldid, j] = (
+          d.qfrc_smooth[worldid, j] + d.qfrc_constraint[worldid, j]
+        )
+
+    if is_sparse:
+      wp.copy(d.qM_integration, d.qM)
+      wp.launch(add_damping_sum_qfrc_kernel_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
+    else:
+      wp.launch(add_damping_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d])
+
   
   if not m.opt.disableflags & types.MJ_DSBL_EULERDAMP:
-
-    # avoid destruction of qM - do we need to guarantee this?
-    # this is the last time in the pipeline where we need qM.
-    wp.copy(
-      d.qM_integration, d.qM
-    )  # TODO(team): compare to kernel that adds damping as well
 
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)

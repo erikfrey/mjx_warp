@@ -172,9 +172,9 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.qM_integration = wp.empty_like(d.qM)
-  d.qLD_integration = wp.empty_like(d.qLD)
-  d.qLDiagInv_integration = wp.empty_like(d.qLDiagInv)
+  d.qM_integration = wp.zeros_like(d.qM)
+  d.qLD_integration = wp.zeros_like(d.qLD)
+  d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
 
   return d
 
@@ -250,8 +250,8 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.qM_integration = wp.empty_like(d.qM)
-  d.qLD_integration = wp.empty_like(d.qLD)
-  d.qLDiagInv_integration = wp.empty_like(d.qLDiagInv)
+  d.qM_integration = wp.zeros_like(d.qM)
+  d.qLD_integration = wp.zeros_like(d.qLD)
+  d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
 
   return d
