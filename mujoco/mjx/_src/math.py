@@ -115,3 +115,16 @@ def quat_sub(qa: wp.quat, qb: wp.quat) -> wp.vec3:
 
   # convert to 3D velocity
   return quat_to_vel(qdif)
+
+
+@wp.func
+def quat_integrate(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
+  """Integrates a quaternion given angular velocity and dt."""
+  norm_ = wp.length(v)
+  v = wp.normalize(v)  # does that need proper zero gradient handling?
+  angle = dt * norm_
+
+  q_res = axis_angle_to_quat(v, angle)
+  q_res = mul_quat(q, q_res)
+
+  return wp.normalize(q_res)

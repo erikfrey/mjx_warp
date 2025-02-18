@@ -228,13 +228,13 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.site_xmat = wp.array(tile(mjd.site_xmat), dtype=wp.mat33, ndim=2)
   d.cinert = wp.array(tile(mjd.cinert), dtype=types.vec10, ndim=2)
   d.cdof = wp.array(tile(mjd.cdof), dtype=wp.spatial_vector, ndim=2)
-  d.actuator_moment = wp.array(tile_fn(actuator_moment), dtype=wp.float32, ndim=3)
+  d.actuator_moment = wp.array(tile(actuator_moment), dtype=wp.float32, ndim=3)
   d.crb = wp.array(tile(mjd.crb), dtype=types.vec10, ndim=2)
   d.qM = wp.array(tile(qM), dtype=wp.float32, ndim=3)
   d.qLD = wp.array(tile(qLD), dtype=wp.float32, ndim=3)
   d.qLDiagInv = wp.array(tile(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
   d.actuator_velocity = wp.array(
-    tile_fn(mjd.actuator_velocity), dtype=wp.float32, ndim=2
+    tile(mjd.actuator_velocity), dtype=wp.float32, ndim=2
   )
   d.cvel = wp.array(tile(mjd.cvel), dtype=wp.spatial_vector, ndim=2)
   d.cdof_dot = wp.array(tile(mjd.cdof_dot), dtype=wp.spatial_vector, ndim=2)

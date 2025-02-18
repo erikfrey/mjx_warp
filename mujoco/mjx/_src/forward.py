@@ -22,18 +22,6 @@ def _advance(
 ) -> types.Data:
   """Advance state and time given activation derivatives and acceleration."""
 
-  @wp.func
-  def quat_integrate(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
-    """Integrates a quaternion given angular velocity and dt."""
-    norm_ = wp.length(v)
-    v = wp.normalize(v)  # does that need proper zero gradient handling?
-    angle = dt * norm_
-
-    q_res = math.axis_angle_to_quat(v, angle)
-    q_res = math.mul_quat(q, q_res)
-
-    return wp.normalize(q_res)
-
   @wp.kernel
   def next_activation(
     m: types.Model, d: types.Data, act_dot_in: wp.array2d(dtype=wp.float32)
@@ -105,7 +93,7 @@ def _advance(
       )
       qvel_ang = wp.vec3(qvel[dof_adr + 3], qvel[dof_adr + 4], qvel[dof_adr + 5])
 
-      qpos_quat_new = quat_integrate(qpos_quat, qvel_ang, m.timestep)
+      qpos_quat_new = math.quat_integrate(qpos_quat, qvel_ang, m.timestep)
 
       qpos[qpos_adr] = qpos_new[0]
       qpos[qpos_adr + 1] = qpos_new[1]
@@ -124,7 +112,7 @@ def _advance(
       )
       qvel_ang = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
-      qpos_quat_new = quat_integrate(qpos_quat, qvel_ang, m.timestep)
+      qpos_quat_new = math.quat_integrate(qpos_quat, qvel_ang, m.timestep)
 
       qpos[qpos_adr] = qpos_quat_new[0]
       qpos[qpos_adr + 1] = qpos_quat_new[1]
