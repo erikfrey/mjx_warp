@@ -2,6 +2,7 @@ import warp as wp
 
 from . import types
 
+
 @wp.func
 def mul_quat(u: wp.quat, v: wp.quat) -> wp.quat:
   return wp.quat(
@@ -91,7 +92,7 @@ def motion_cross_force(v: wp.spatial_vector, f: wp.spatial_vector) -> wp.spatial
 
 @wp.func
 def quat_to_vel(quat: wp.quat) -> wp.vec3:
-  axis  = wp.vec3(quat[1], quat[2], quat[3])
+  axis = wp.vec3(quat[1], quat[2], quat[3])
   sin_a_2 = wp.norm_l2(axis)
 
   if sin_a_2 == 0.0:

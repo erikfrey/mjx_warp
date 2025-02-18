@@ -25,8 +25,9 @@ import warp as wp
 from . import io
 from . import types
 
+
 def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
-  path = epath.resource_path('mujoco.mjx') / 'test_data' / fname
+  path = epath.resource_path("mujoco.mjx") / "test_data" / fname
   mjm = mujoco.MjModel.from_xml_path(path.as_posix())
   mjd = mujoco.MjData(mjm)
   if keyframe > -1:

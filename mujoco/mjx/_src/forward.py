@@ -10,12 +10,13 @@ from . import passive
 from . import smooth
 from . import types
 
+
 def _advance(
-    m: types.Model,
-    d: types.Data,
-    act_dot: wp.array,
-    qacc: wp.array,
-    qvel: Optional[wp.array] = None,
+  m: types.Model,
+  d: types.Data,
+  act_dot: wp.array,
+  qacc: wp.array,
+  qvel: Optional[wp.array] = None,
 ) -> types.Data:
   """Advance state and time given activation derivatives and acceleration."""
 
@@ -33,7 +34,7 @@ def _advance(
 
   @wp.kernel
   def next_activation(
-      m: types.Model, d: types.Data, act_dot_in: wp.array2d(dtype=wp.float32)
+    m: types.Model, d: types.Data, act_dot_in: wp.array2d(dtype=wp.float32)
   ):
     worldId, tid = wp.tid()
 
@@ -59,9 +60,7 @@ def _advance(
 
     # advance the actuation
     if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
-      tau = wp.select(
-          dyn_prm < types.MJ_MINVAL, dyn_prm, types.MJ_MINVAL
-      )
+      tau = wp.select(dyn_prm < types.MJ_MINVAL, dyn_prm, types.MJ_MINVAL)
       act = act + act_dot * tau * (1.0 - wp.exp(-m.timestep / tau))
     else:
       act = act + act_dot * m.timestep
@@ -73,15 +72,14 @@ def _advance(
 
   @wp.kernel
   def advance_velocities(
-      m: types.Model, d: types.Data, qacc: wp.array2d(dtype=wp.float32)
+    m: types.Model, d: types.Data, qacc: wp.array2d(dtype=wp.float32)
   ):
     worldId, tid = wp.tid()
     d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.timestep
 
-
   @wp.kernel
   def integrate_joint_positions(
-      m: types.Model, d: types.Data, qvel_in: wp.array2d(dtype=wp.float32)
+    m: types.Model, d: types.Data, qvel_in: wp.array2d(dtype=wp.float32)
   ):
     worldId, tid = wp.tid()
 
@@ -98,10 +96,10 @@ def _advance(
       qpos_new = qpos_pos + m.timestep * qvel_lin
 
       qpos_quat = wp.quat(
-          qpos[qpos_adr + 3],
-          qpos[qpos_adr + 4],
-          qpos[qpos_adr + 5],
-          qpos[qpos_adr + 6],
+        qpos[qpos_adr + 3],
+        qpos[qpos_adr + 4],
+        qpos[qpos_adr + 5],
+        qpos[qpos_adr + 6],
       )
       qvel_ang = wp.vec3(qvel[dof_adr + 3], qvel[dof_adr + 4], qvel[dof_adr + 5])
 
@@ -117,10 +115,10 @@ def _advance(
 
     elif jnt_type == 1:  # ball joint
       qpos_quat = wp.quat(
-          qpos[qpos_adr],
-          qpos[qpos_adr + 1],
-          qpos[qpos_adr + 2],
-          qpos[qpos_adr + 3],
+        qpos[qpos_adr],
+        qpos[qpos_adr + 1],
+        qpos[qpos_adr + 2],
+        qpos[qpos_adr + 3],
       )
       qvel_ang = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
@@ -134,7 +132,6 @@ def _advance(
     else:  # if jnt_type in (JointType.HINGE, JointType.SLIDE):
       qpos[qpos_adr] = qpos[qpos_adr] + m.timestep * qvel[dof_adr]
 
-
   # skip if no stateful actuators.
   if m.na:
     wp.launch(next_activation, dim=(d.nworld, m.nu), inputs=[m, d, act_dot])
@@ -147,9 +144,7 @@ def _advance(
   else:
     qvel_in = d.qvel
 
-  wp.launch(
-      integrate_joint_positions, dim=(d.nworld, m.njnt), inputs=[m, d, qvel_in]
-  )
+  wp.launch(integrate_joint_positions, dim=(d.nworld, m.njnt), inputs=[m, d, qvel_in])
 
   d.time = d.time + m.timestep
   return d
@@ -160,31 +155,40 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
   # integrate damping implicitly
 
   def add_damping_sum_qfrc(m: types.Model, d: types.Data, is_sparse: bool):
-
     @wp.kernel
     def add_damping_sum_qfrc_kernel(m: types.Model, d: types.Data):
       worldId, tid = wp.tid()
 
-      if (wp.static(is_sparse)):
+      if wp.static(is_sparse):
         dof_Madr = m.dof_Madr[tid]
         d.qM_integration[worldId, 0, dof_Madr] += m.timestep * m.dof_damping[dof_Madr]
       else:
         d.qM_integration[worldId, tid, tid] += m.timestep * m.dof_damping[tid]
 
       d.qfrc_integration[worldId, tid] = (
-          d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
+        d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
       )
-    
+
     wp.launch(add_damping_sum_qfrc_kernel, dim=(d.nworld, m.nv), inputs=[m, d])
 
   wp.copy(d.qacc_integration, d.qacc)
-  wp.copy(d.qM_integration, d.qM) # TODO(team): compare to kernel that adds damping as well
+  wp.copy(
+    d.qM_integration, d.qM
+  )  # TODO(team): compare to kernel that adds damping as well
 
-  if not m.opt.disableflags & types.MJ_DSBL_EULERDAMP:    
+  if not m.opt.disableflags & types.MJ_DSBL_EULERDAMP:
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
-    smooth.solve_m(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qfrc_integration, d.qacc_integration)
+    smooth.solve_m(
+      m,
+      d,
+      d.qLD_integration,
+      d.qLDiagInv_integration,
+      d.qfrc_integration,
+      d.qacc_integration,
+    )
   return _advance(m, d, d.act_dot, d.qacc_integration)
+
 
 def fwd_position(m: types.Model, d: types.Data):
   """Position-dependent computations."""
@@ -209,8 +213,7 @@ def fwd_velocity(m: types.Model, d: types.Data):
     worldid, actid, dofid = wp.tid()
     moment = d.actuator_moment[worldid, actid]
     qvel = d.qvel[worldid]
-    wp.atomic_add(d.actuator_velocity[worldid],
-                  actid, moment[dofid] * qvel[dofid])
+    wp.atomic_add(d.actuator_velocity[worldid], actid, moment[dofid] * qvel[dofid])
 
   wp.launch(_actuator_velocity, dim=(d.nworld, m.nu, m.nv), inputs=[d])
 
@@ -228,7 +231,12 @@ def fwd_acceleration(m: types.Model, d: types.Data):
   @wp.kernel
   def _qfrc_smooth(d: types.Data, qfrc_applied: wp.array(ndim=2, dtype=wp.float32)):
     worldid, dofid = wp.tid()
-    d.qfrc_smooth[worldid, dofid] = d.qfrc_passive[worldid, dofid] - d.qfrc_bias[worldid, dofid] + d.qfrc_actuator[worldid, dofid] + qfrc_applied[worldid, dofid]
+    d.qfrc_smooth[worldid, dofid] = (
+      d.qfrc_passive[worldid, dofid]
+      - d.qfrc_bias[worldid, dofid]
+      + d.qfrc_actuator[worldid, dofid]
+      + qfrc_applied[worldid, dofid]
+    )
 
   wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
 

@@ -10,6 +10,7 @@ from mujoco import mjx
 
 MJ_MINVAL = wp.constant(1e-15)
 
+
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
 
@@ -36,8 +37,9 @@ MJ_DSBL_EULERDAMP = 1 << 14
 @wp.struct
 class Option:
   gravity: wp.vec3
-  is_sparse: bool # warp only
+  is_sparse: bool  # warp only
   disableflags: int
+
 
 @wp.struct
 class Model:
@@ -152,4 +154,3 @@ class Data:
   qM_integration: wp.array(dtype=wp.float32, ndim=3)
   qLD_integration: wp.array(dtype=wp.float32, ndim=3)
   qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)
-  

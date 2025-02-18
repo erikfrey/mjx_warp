@@ -34,9 +34,7 @@ def kinematics(m: types.Model, d: types.Data):
       qadr = m.jnt_qposadr[jntadr]
       # TODO(erikfrey): would it be better to use some kind of wp.copy here?
       xpos = wp.vec3(qpos[qadr], qpos[qadr + 1], qpos[qadr + 2])
-      xquat = wp.quat(
-          qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6]
-      )
+      xquat = wp.quat(qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6])
       d.xanchor[worldid, jntadr] = xpos
       d.xaxis[worldid, jntadr] = m.jnt_axis[jntadr]
     else:
@@ -90,9 +88,9 @@ def com_pos(m: types.Model, d: types.Data):
 
   @wp.kernel
   def mass_subtree_acc(
-      m: types.Model,
-      mass_subtree: wp.array(dtype=wp.float32, ndim=1),
-      leveladr: int,
+    m: types.Model,
+    mass_subtree: wp.array(dtype=wp.float32, ndim=1),
+    leveladr: int,
   ):
     nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
@@ -102,9 +100,7 @@ def com_pos(m: types.Model, d: types.Data):
   @wp.kernel
   def subtree_com_init(m: types.Model, d: types.Data):
     worldid, bodyid = wp.tid()
-    d.subtree_com[worldid, bodyid] = (
-        d.xipos[worldid, bodyid] * m.body_mass[bodyid]
-    )
+    d.subtree_com[worldid, bodyid] = d.xipos[worldid, bodyid] * m.body_mass[bodyid]
 
   @wp.kernel
   def subtree_com_acc(m: types.Model, d: types.Data, leveladr: int):
@@ -114,9 +110,7 @@ def com_pos(m: types.Model, d: types.Data):
     wp.atomic_add(d.subtree_com, worldid, pid, d.subtree_com[worldid, bodyid])
 
   @wp.kernel
-  def subtree_div(
-      mass_subtree: wp.array(dtype=wp.float32, ndim=1), d: types.Data
-  ):
+  def subtree_div(mass_subtree: wp.array(dtype=wp.float32, ndim=1), d: types.Data):
     worldid, bodyid = wp.tid()
     d.subtree_com[worldid, bodyid] /= mass_subtree[bodyid]
 
@@ -126,9 +120,7 @@ def com_pos(m: types.Model, d: types.Data):
     mat = d.ximat[worldid, bodyid]
     inert = m.body_inertia[bodyid]
     mass = m.body_mass[bodyid]
-    dif = (
-        d.xipos[worldid, bodyid] - d.subtree_com[worldid, m.body_rootid[bodyid]]
-    )
+    dif = d.xipos[worldid, bodyid] - d.subtree_com[worldid, m.body_rootid[bodyid]]
     # express inertia in com-based frame (mju_inertCom)
 
     res = types.vec10()
@@ -166,10 +158,7 @@ def com_pos(m: types.Model, d: types.Data):
     xmat = wp.transpose(d.xmat[worldid, bodyid])
 
     # compute com-anchor vector
-    offset = (
-        d.subtree_com[worldid, m.body_rootid[bodyid]]
-        - d.xanchor[worldid, jntid]
-    )
+    offset = d.subtree_com[worldid, m.body_rootid[bodyid]] - d.xanchor[worldid, jntid]
 
     res = d.cdof[worldid]
     if jnt_type == 0:  # free
@@ -250,7 +239,9 @@ def crb(m: types.Model, d: types.Data):
   wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
 
 
-def _factor_m_sparse(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array, qLDiagInv: wp.array):
+def _factor_m_sparse(
+  m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array, qLDiagInv: wp.array
+):
   """Sparse L'*D*L factorizaton of inertia-like matrix M, assumed spd."""
 
   @wp.kernel
@@ -268,7 +259,11 @@ def _factor_m_sparse(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array,
     qLD[worldid, 0, Madr_ki] = tmp
 
   @wp.kernel
-  def qLDiag_div(m: types.Model, qLD: wp.array3d(dtype=wp.float32), qLDiagInv: wp.array2d(dtype=wp.float32)):
+  def qLDiag_div(
+    m: types.Model,
+    qLD: wp.array3d(dtype=wp.float32),
+    qLDiagInv: wp.array2d(dtype=wp.float32),
+  ):
     worldid, dofid = wp.tid()
     qLDiagInv[worldid, dofid] = 1.0 / qLD[worldid, 0, m.dof_Madr[dofid]]
 
@@ -290,16 +285,24 @@ def _factor_m_dense(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array):
   block_dim = 32
 
   def cholesky(adr, size, tilesize):
-
     @wp.kernel
-    def cholesky(m: types.Model, leveladr: int, qM: wp.array3d(dtype=wp.float32), qLD: wp.array3d(dtype=wp.float32)):
+    def cholesky(
+      m: types.Model,
+      leveladr: int,
+      qM: wp.array3d(dtype=wp.float32),
+      qLD: wp.array3d(dtype=wp.float32),
+    ):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_dense_tileid[leveladr + nodeid]
-      qM_tile = wp.tile_load(qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
+      qM_tile = wp.tile_load(
+        qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      )
       qLD_tile = wp.tile_cholesky(qM_tile)
       wp.tile_store(qLD[worldid], qLD_tile, offset=(dofid, dofid))
 
-    wp.launch_tiled(cholesky, dim=(d.nworld, size), inputs=[m, adr, qM, qLD], block_dim=block_dim)
+    wp.launch_tiled(
+      cholesky, dim=(d.nworld, size), inputs=[m, adr, qM, qLD], block_dim=block_dim
+    )
 
   leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
   tilesize = m.qLD_dense_tilesize.numpy()
@@ -308,7 +311,7 @@ def _factor_m_dense(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array):
     cholesky(leveladr[i], levelsize[i], int(tilesize[i]))
 
 
-def factor_m(m: types.Model, d: types.Data, qM, qLD, qLDiagInv = None):
+def factor_m(m: types.Model, d: types.Data, qM, qLD, qLDiagInv=None):
   """Factorizaton of inertia-like matrix M, assumed spd."""
   if wp.static(m.opt.is_sparse):
     assert qLDiagInv is not None
@@ -317,16 +320,26 @@ def factor_m(m: types.Model, d: types.Data, qM, qLD, qLDiagInv = None):
     pass
     _factor_m_dense(m, d, qM, qLD)
 
-def _solve_m_sparse(m: types.Model, d: types.Data, qLD: wp.array, qLDiagInv: wp.array, x: wp.array, y: wp.array):
 
+def _solve_m_sparse(
+  m: types.Model,
+  d: types.Data,
+  qLD: wp.array,
+  qLDiagInv: wp.array,
+  x: wp.array,
+  y: wp.array,
+):
   @wp.kernel
   def solve_m_sparse(
-      m: types.Model, qLD: wp.array3d(dtype=wp.float32), qLDiagInv: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32)
+    m: types.Model,
+    qLD: wp.array3d(dtype=wp.float32),
+    qLDiagInv: wp.array2d(dtype=wp.float32),
+    y: wp.array2d(dtype=wp.float32),
   ):
     worldid = wp.tid()
 
     # x <- inv(L') * x;
-    for i in range(m.nv-1, -1, -1):
+    for i in range(m.nv - 1, -1, -1):
       madr_ij = m.dof_Madr[i] + 1
       j = m.dof_parentid[i]
 
@@ -339,7 +352,7 @@ def _solve_m_sparse(m: types.Model, d: types.Data, qLD: wp.array, qLDiagInv: wp.
     for i in range(m.nv):
       y[worldid, i] = y[worldid, i] * qLDiagInv[worldid, i]
 
-    # x <- inv(L) * x; 
+    # x <- inv(L) * x;
     for i in range(m.nv):
       madr_ij = m.dof_Madr[i] + 1
       j = m.dof_parentid[i]
@@ -352,23 +365,37 @@ def _solve_m_sparse(m: types.Model, d: types.Data, qLD: wp.array, qLDiagInv: wp.
   wp.copy(y, x)
   wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, qLD, qLDiagInv, y])
 
-def _solve_m_dense(m: types.Model, d: types.Data, qLD: wp.array, x: wp.array, y: wp.array):
 
+def _solve_m_dense(
+  m: types.Model, d: types.Data, qLD: wp.array, x: wp.array, y: wp.array
+):
   # TODO(team): develop heuristic for block dim, or make configurable
   block_dim = 32
 
   def cholesky_solve(adr, size, tilesize):
-
     @wp.kernel
-    def cholesky_solve(m: types.Model, leveladr: int, qLD: wp.array3d(dtype=wp.float32), x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32)):
+    def cholesky_solve(
+      m: types.Model,
+      leveladr: int,
+      qLD: wp.array3d(dtype=wp.float32),
+      x: wp.array2d(dtype=wp.float32),
+      y: wp.array2d(dtype=wp.float32),
+    ):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_dense_tileid[leveladr + nodeid]
-      qLD_tile = wp.tile_load(qLD[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
+      qLD_tile = wp.tile_load(
+        qLD[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      )
       x_tile = wp.tile_load(x[worldid], shape=(tilesize), offset=dofid)
       y_tile = wp.tile_cholesky_solve(qLD_tile, x_tile)
       wp.tile_store(y[worldid], y_tile, offset=dofid)
 
-    wp.launch_tiled(cholesky_solve, dim=(d.nworld, size), inputs=[m, adr, qLD, x, y], block_dim=block_dim)
+    wp.launch_tiled(
+      cholesky_solve,
+      dim=(d.nworld, size),
+      inputs=[m, adr, qLD, x, y],
+      block_dim=block_dim,
+    )
 
   leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
   tilesize = m.qLD_dense_tilesize.numpy()
@@ -376,15 +403,23 @@ def _solve_m_dense(m: types.Model, d: types.Data, qLD: wp.array, x: wp.array, y:
   for i in range(len(leveladr)):
     cholesky_solve(leveladr[i], levelsize[i], int(tilesize[i]))
 
+
 def solve_m(
-    m: types.Model, d: types.Data, qLD: wp.array, qLDiagInv: wp.array, x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32), block_dim: int = 32
+  m: types.Model,
+  d: types.Data,
+  qLD: wp.array,
+  qLDiagInv: wp.array,
+  x: wp.array2d(dtype=wp.float32),
+  y: wp.array2d(dtype=wp.float32),
+  block_dim: int = 32,
 ):
   """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
 
-  if (m.opt.is_sparse):
+  if m.opt.is_sparse:
     _solve_m_sparse(m, d, qLD, qLDiagInv, x, y)
   else:
     _solve_m_dense(m, d, qLD, x, y)
+
 
 def rne(m: types.Model, d: types.Data):
   """Computes inverse dynamics using Newton-Euler algorithm."""
@@ -415,10 +450,17 @@ def rne(m: types.Model, d: types.Data):
     cacc[worldid, bodyid] = local_cacc
 
   @wp.kernel
-  def frc_fn(d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+  def frc_fn(
+    d: types.Data,
+    cfrc: wp.array(dtype=wp.spatial_vector, ndim=2),
+    cacc: wp.array(dtype=wp.spatial_vector, ndim=2),
+  ):
     worldid, bodyid = wp.tid()
     frc = math.inert_vec(d.cinert[worldid, bodyid], cacc[worldid, bodyid])
-    frc += math.motion_cross_force(d.cvel[worldid, bodyid], math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid]))
+    frc += math.motion_cross_force(
+      d.cvel[worldid, bodyid],
+      math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid]),
+    )
     cfrc[worldid, bodyid] += frc
 
   @wp.kernel
@@ -474,7 +516,7 @@ def com_vel(m: types.Model, d: types.Data):
     if jntnum == 0:
       d.cvel[worldid, bodyid] = d.cvel[worldid, pid]
       return
-    
+
     cvel = d.cvel[worldid, pid]
     qvel = d.qvel[worldid]
     cdof = d.cdof[worldid]
@@ -496,7 +538,7 @@ def com_vel(m: types.Model, d: types.Data):
         cvel += cdof[dofid + 5] * qvel[dofid + 5]
 
         dofid += 6
-      elif jnttype == 1: # ball
+      elif jnttype == 1:  # ball
         d.cdof_dot[worldid, dofid + 0] = math.motion_cross(cvel, cdof[dofid + 0])
         d.cdof_dot[worldid, dofid + 1] = math.motion_cross(cvel, cdof[dofid + 1])
         d.cdof_dot[worldid, dofid + 2] = math.motion_cross(cvel, cdof[dofid + 2])

@@ -56,7 +56,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in qLD updates
     qLD_levelsize = np.array([len(qLD_updates[i]) for i in range(len(qLD_updates))])
     qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
-    qLD_sparse_updates = np.array(sum([qLD_updates[i] for i in range(len(qLD_updates))], []))
+    qLD_sparse_updates = np.array(
+      sum([qLD_updates[i] for i in range(len(qLD_updates))], [])
+    )
   else:
     # track tile sizes for dense cholesky
     tile_corners = [i for i in range(mjm.nv) if mjm.dof_parentid[i] == -1]
@@ -71,17 +73,15 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qld_dense_tilesize = np.array(sorted(tiles.keys()))
     qld_dense_tileid = np.array(sum([tiles[sz] for sz in sorted(tiles.keys())], []))
 
-  m.body_leveladr = wp.array(
-      body_leveladr, dtype=wp.int32, ndim=1, device="cpu"
-  )
-  m.body_levelsize = wp.array(
-      body_levelsize, dtype=wp.int32, ndim=1, device="cpu"
-  )
+  m.body_leveladr = wp.array(body_leveladr, dtype=wp.int32, ndim=1, device="cpu")
+  m.body_levelsize = wp.array(body_levelsize, dtype=wp.int32, ndim=1, device="cpu")
   m.body_tree = wp.array(body_tree, dtype=wp.int32, ndim=1)
   m.qLD_leveladr = wp.array(qLD_leveladr, dtype=wp.int32, ndim=1, device="cpu")
   m.qLD_levelsize = wp.array(qLD_levelsize, dtype=wp.int32, ndim=1, device="cpu")
   m.qLD_sparse_updates = wp.array(qLD_sparse_updates, dtype=wp.vec3i, ndim=1)
-  m.qLD_dense_tilesize = wp.array(qld_dense_tilesize, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_dense_tilesize = wp.array(
+    qld_dense_tilesize, dtype=wp.int32, ndim=1, device="cpu"
+  )
   m.qLD_dense_tileid = wp.array(qld_dense_tileid, dtype=wp.int32, ndim=1)
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
@@ -181,9 +181,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   return d
 
 
-def put_data(
-    mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1
-) -> types.Data:
+def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
   d.time = mjd.time
@@ -202,7 +200,13 @@ def put_data(
 
   # TODO(taylorhowell): sparse actuator_moment
   actuator_moment = np.zeros((mjm.nu, mjm.nv))
-  mujoco.mju_sparse2dense(actuator_moment, mjd.actuator_moment, mjd.moment_rownnz, mjd.moment_rowadr, mjd.moment_colind)
+  mujoco.mju_sparse2dense(
+    actuator_moment,
+    mjd.actuator_moment,
+    mjd.moment_rownnz,
+    mjd.moment_rowadr,
+    mjd.moment_colind,
+  )
 
   d.qpos = wp.array(tile(mjd.qpos), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile(mjd.qvel), dtype=wp.float32, ndim=2)
@@ -229,7 +233,9 @@ def put_data(
   d.qM = wp.array(tile(qM), dtype=wp.float32, ndim=3)
   d.qLD = wp.array(tile(qLD), dtype=wp.float32, ndim=3)
   d.qLDiagInv = wp.array(tile(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
-  d.actuator_velocity = wp.array(tile_fn(mjd.actuator_velocity), dtype=wp.float32, ndim=2)
+  d.actuator_velocity = wp.array(
+    tile_fn(mjd.actuator_velocity), dtype=wp.float32, ndim=2
+  )
   d.cvel = wp.array(tile(mjd.cvel), dtype=wp.spatial_vector, ndim=2)
   d.cdof_dot = wp.array(tile(mjd.cdof_dot), dtype=wp.spatial_vector, ndim=2)
   d.qfrc_bias = wp.array(tile(mjd.qfrc_bias), dtype=wp.float32, ndim=2)
@@ -238,9 +244,7 @@ def put_data(
   d.qfrc_damper = wp.array(tile(mjd.qfrc_damper), dtype=wp.float32, ndim=2)
   d.qfrc_actuator = wp.array(tile(mjd.qfrc_actuator), dtype=wp.float32, ndim=2)
   d.qfrc_smooth = wp.array(tile(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
-  d.qfrc_constraint = wp.array(
-      tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2
-  )
+  d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
