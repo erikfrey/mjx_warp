@@ -96,8 +96,6 @@ class ForwardTest(absltest.TestCase):
     mjx.euler(m, d)
     mujoco.mj_Euler(mjm, mjd)
 
-    print(d.qpos)
-
     _assert_eq(d.qpos.numpy()[0], mjd.qpos, "qpos")
     _assert_eq(d.act.numpy()[0], mjd.act, "act")
 
