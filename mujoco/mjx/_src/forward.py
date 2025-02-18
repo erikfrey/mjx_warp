@@ -18,10 +18,6 @@ def quat_integrate_wp(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
 
   return wp.normalize(q_res)
 
-
-WarpMjMinVal = wp.constant(1e-15)
-
-
 @wp.kernel
 def next_activation(
     m: types.Model, d: types.Data, act_dot_in: wp.array2d(dtype=wp.float32)
@@ -51,7 +47,7 @@ def next_activation(
   # advance the actuation
   if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
     tau = wp.select(
-        dyn_prm < wp.static(WarpMjMinVal), dyn_prm, wp.static(WarpMjMinVal)
+        dyn_prm < types.MJ_MINVAL, dyn_prm, types.MJ_MINVAL
     )
     act = act + act_dot * tau * (1.0 - wp.exp(-m.timestep / tau))
   else:

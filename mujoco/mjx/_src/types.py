@@ -3,6 +3,7 @@ import warp as wp
 import mujoco
 from mujoco import mjx
 
+MJ_MINVAL = wp.constant(1e-15)
 
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
