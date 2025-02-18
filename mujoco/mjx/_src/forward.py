@@ -164,11 +164,12 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
     wp.launch(add_damping_sum_qfrc_kernel, dim=(d.nworld, m.nv), inputs=[m, d])
 
   wp.copy(d.qacc_integration, d.qacc)
-  wp.copy(
-    d.qM_integration, d.qM
-  )  # TODO(team): compare to kernel that adds damping as well
-
+  
   if not m.opt.disableflags & types.MJ_DSBL_EULERDAMP:
+    wp.copy(
+      d.qM_integration, d.qM
+    )  # TODO(team): compare to kernel that adds damping as well
+
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_m(
