@@ -51,9 +51,9 @@ def _advance(
     # advance the actuation
     if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
       tau = wp.select(dyn_prm < types.MJ_MINVAL, dyn_prm, types.MJ_MINVAL)
-      act = act + act_dot * tau * (1.0 - wp.exp(-m.timestep / tau))
+      act = act + act_dot * tau * (1.0 - wp.exp(-m.opt.timestep / tau))
     else:
-      act = act + act_dot * m.timestep
+      act = act + act_dot * m.opt.timestep
 
     # apply limits
     wp.clamp(act, range_low, range_high)
@@ -65,7 +65,7 @@ def _advance(
     m: types.Model, d: types.Data, qacc: wp.array2d(dtype=wp.float32)
   ):
     worldId, tid = wp.tid()
-    d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.timestep
+    d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.opt.timestep
 
   @wp.kernel
   def integrate_joint_positions(
@@ -83,7 +83,7 @@ def _advance(
       qpos_pos = wp.vec3(qpos[qpos_adr], qpos[qpos_adr + 1], qpos[qpos_adr + 2])
       qvel_lin = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
-      qpos_new = qpos_pos + m.timestep * qvel_lin
+      qpos_new = qpos_pos + m.opt.timestep * qvel_lin
 
       qpos_quat = wp.quat(
         qpos[qpos_adr + 3],
@@ -93,7 +93,7 @@ def _advance(
       )
       qvel_ang = wp.vec3(qvel[dof_adr + 3], qvel[dof_adr + 4], qvel[dof_adr + 5])
 
-      qpos_quat_new = math.quat_integrate(qpos_quat, qvel_ang, m.timestep)
+      qpos_quat_new = math.quat_integrate(qpos_quat, qvel_ang, m.opt.timestep)
 
       qpos[qpos_adr] = qpos_new[0]
       qpos[qpos_adr + 1] = qpos_new[1]
@@ -112,7 +112,7 @@ def _advance(
       )
       qvel_ang = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
-      qpos_quat_new = math.quat_integrate(qpos_quat, qvel_ang, m.timestep)
+      qpos_quat_new = math.quat_integrate(qpos_quat, qvel_ang, m.opt.timestep)
 
       qpos[qpos_adr] = qpos_quat_new[0]
       qpos[qpos_adr + 1] = qpos_quat_new[1]
@@ -120,7 +120,7 @@ def _advance(
       qpos[qpos_adr + 3] = qpos_quat_new[3]
 
     else:  # if jnt_type in (JointType.HINGE, JointType.SLIDE):
-      qpos[qpos_adr] = qpos[qpos_adr] + m.timestep * qvel[dof_adr]
+      qpos[qpos_adr] = qpos[qpos_adr] + m.opt.timestep * qvel[dof_adr]
 
   # skip if no stateful actuators.
   if m.na:
@@ -136,7 +136,7 @@ def _advance(
 
   wp.launch(integrate_joint_positions, dim=(d.nworld, m.njnt), inputs=[m, d, qvel_in])
 
-  d.time = d.time + m.timestep
+  d.time = d.time + m.opt.timestep
   return d
 
 
@@ -151,9 +151,9 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
 
       if wp.static(is_sparse):
         dof_Madr = m.dof_Madr[tid]
-        d.qM_integration[worldId, 0, dof_Madr] += m.timestep * m.dof_damping[dof_Madr]
+        d.qM_integration[worldId, 0, dof_Madr] += m.opt.timestep * m.dof_damping[dof_Madr]
       else:
-        d.qM_integration[worldId, tid, tid] += m.timestep * m.dof_damping[tid]
+        d.qM_integration[worldId, tid, tid] += m.opt.timestep * m.dof_damping[tid]
 
       d.qfrc_integration[worldId, tid] = (
         d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]

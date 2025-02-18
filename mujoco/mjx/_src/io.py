@@ -23,7 +23,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.ngeom = mjm.ngeom
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
-  m.timestep = mjm.opt.timestep
   m.nM = mjm.nM
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
@@ -115,6 +114,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
   m.opt.is_sparse = support.is_sparse(mjm)
+  m.opt.timestep = mjm.opt.timestep
   m.opt.disableflags = mjm.opt.disableflags
 
   return m
