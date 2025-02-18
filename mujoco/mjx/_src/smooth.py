@@ -317,7 +317,6 @@ def factor_m(m: types.Model, d: types.Data, qM, qLD, qLDiagInv=None):
     assert qLDiagInv is not None
     _factor_m_sparse(m, d, qM, qLD, qLDiagInv)
   else:
-    pass
     _factor_m_dense(m, d, qM, qLD)
 
 
