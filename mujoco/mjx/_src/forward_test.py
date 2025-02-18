@@ -69,7 +69,6 @@ class ForwardTest(absltest.TestCase):
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     self.assertTrue((mjm.dof_damping > 0).any())
 
-    """
     mjd = mujoco.MjData(mjm)
     mjd.qvel[:] = 1.0
     mjd.qacc[:] = 1.0
@@ -83,7 +82,7 @@ class ForwardTest(absltest.TestCase):
 
     _assert_eq(d.qpos.numpy()[0], mjd.qpos, 'qpos')
     _assert_eq(d.act.numpy()[0], mjd.act, 'act')
-    """
+    
     # also test sparse
     mjm.opt.jacobian = mujoco.mjtJacobian.mjJAC_SPARSE
     mjd = mujoco.MjData(mjm)
