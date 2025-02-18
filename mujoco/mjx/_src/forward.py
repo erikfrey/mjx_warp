@@ -162,8 +162,6 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
       )
 
     wp.launch(add_damping_sum_qfrc_kernel, dim=(d.nworld, m.nv), inputs=[m, d])
-
-  wp.copy(d.qacc_integration, d.qacc)
   
   if not m.opt.disableflags & types.MJ_DSBL_EULERDAMP:
     wp.copy(
@@ -180,7 +178,9 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
       d.qfrc_integration,
       d.qacc_integration,
     )
-  return _advance(m, d, d.act_dot, d.qacc_integration)
+    return _advance(m, d, d.act_dot, d.qacc_integration)
+
+  return _advance(m, d, d.act_dot, d.qacc)
 
 
 def fwd_position(m: types.Model, d: types.Data):
