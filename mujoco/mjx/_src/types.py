@@ -129,7 +129,6 @@ class Data:
   crb: wp.array(dtype=vec10, ndim=2)
   qM: wp.array(dtype=wp.float32, ndim=3)
   qLD: wp.array(dtype=wp.float32, ndim=3)
-  qvel: wp.array(dtype=wp.float32, ndim=2)
   act: wp.array(dtype=wp.float32, ndim=2)
   act_dot: wp.array(dtype=wp.float32, ndim=2)
   qLDiagInv: wp.array(dtype=wp.float32, ndim=2)
