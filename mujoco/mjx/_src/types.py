@@ -38,6 +38,7 @@ class Model:
   nq: int
   nv: int
   na: int
+  nu: int
   nbody: int
   njnt: int
   ngeom: int
@@ -118,6 +119,7 @@ class Data:
   site_xmat: wp.array(dtype=wp.mat33, ndim=2)
   cinert: wp.array(dtype=vec10, ndim=2)
   cdof: wp.array(dtype=wp.spatial_vector, ndim=2)
+  actuator_moment: wp.array(dtype=wp.float32, ndim=3)
   crb: wp.array(dtype=vec10, ndim=2)
   qM: wp.array(dtype=wp.float32, ndim=3)
   qLD: wp.array(dtype=wp.float32, ndim=3)
@@ -129,6 +131,7 @@ class Data:
   qLDiagInv: wp.array(dtype=wp.float32, ndim=2)
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)
   qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
+  actuator_velocity: wp.array(dtype=wp.float32, ndim=2)
   cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
   cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
   qfrc_bias: wp.array(dtype=wp.float32, ndim=2)

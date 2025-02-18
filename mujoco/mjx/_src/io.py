@@ -12,6 +12,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nq = mjm.nq
   m.nv = mjm.nv
   m.na = mjm.na
+  m.nu = mjm.nu
   m.nbody = mjm.nbody
   m.njnt = mjm.njnt
   m.ngeom = mjm.ngeom
@@ -140,6 +141,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.site_xmat = wp.zeros((nworld, mjm.nsite), dtype=wp.mat33)
   d.cinert = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   d.cdof = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
+  d.actuator_moment = wp.zeros((nworld, mjm.nu, mjm.nv), dtype=wp.float32)
   d.crb = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   if support.is_sparse(mjm):
     d.qM = wp.zeros((nworld, 1, mjm.nM), dtype=wp.float32)
@@ -152,6 +154,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.act = wp.zeros((nworld, mjm.na), dtype=wp.float32)
   d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.actuator_velocity = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
   d.cvel = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
   d.cdof_dot = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
   d.qfrc_bias = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -192,6 +195,10 @@ def put_data(
     mujoco.mj_fullM(mjm, qM, mjd.qM)
     qLD = np.linalg.cholesky(qM, upper=True)
 
+  # TODO(taylorhowell): sparse actuator_moment
+  actuator_moment = np.zeros((mjm.nu, mjm.nv))
+  mujoco.mju_sparse2dense(actuator_moment, mjd.actuator_moment, mjd.moment_rownnz, mjd.moment_rowadr, mjd.moment_colind)
+
   d.qpos = wp.array(tile(mjd.qpos), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile(mjd.qvel), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.array(tile(mjd.qfrc_applied), dtype=wp.float32, ndim=2)
@@ -212,10 +219,12 @@ def put_data(
   d.site_xmat = wp.array(tile(mjd.site_xmat), dtype=wp.mat33, ndim=2)
   d.cinert = wp.array(tile(mjd.cinert), dtype=types.vec10, ndim=2)
   d.cdof = wp.array(tile(mjd.cdof), dtype=wp.spatial_vector, ndim=2)
+  d.actuator_moment = wp.array(tile_fn(actuator_moment), dtype=wp.float32, ndim=3)
   d.crb = wp.array(tile(mjd.crb), dtype=types.vec10, ndim=2)
   d.qM = wp.array(tile(qM), dtype=wp.float32, ndim=3)
   d.qLD = wp.array(tile(qLD), dtype=wp.float32, ndim=3)
   d.qLDiagInv = wp.array(tile(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
+  d.actuator_velocity = wp.array(tile_fn(mjd.actuator_velocity), dtype=wp.float32, ndim=2)
   d.cvel = wp.array(tile(mjd.cvel), dtype=wp.spatial_vector, ndim=2)
   d.cdof_dot = wp.array(tile(mjd.cdof_dot), dtype=wp.spatial_vector, ndim=2)
   d.qfrc_bias = wp.array(tile(mjd.qfrc_bias), dtype=wp.float32, ndim=2)
