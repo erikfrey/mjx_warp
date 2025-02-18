@@ -164,6 +164,9 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
     wp.launch(add_damping_sum_qfrc_kernel, dim=(d.nworld, m.nv), inputs=[m, d])
   
   if not m.opt.disableflags & types.MJ_DSBL_EULERDAMP:
+
+    # avoid destruction of qM - do we need to guarantee this?
+    # this is the last time in the pipeline where we need qM.
     wp.copy(
       d.qM_integration, d.qM
     )  # TODO(team): compare to kernel that adds damping as well
