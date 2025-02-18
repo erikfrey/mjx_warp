@@ -240,45 +240,45 @@ def crb(m: types.Model, d: types.Data):
 
 
 def _factor_m_sparse(
-  m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array, qLDiagInv: wp.array
+  m: types.Model, d: types.Data, M: wp.array, L: wp.array, D: wp.array
 ):
   """Sparse L'*D*L factorizaton of inertia-like matrix M, assumed spd."""
 
   @wp.kernel
-  def qLD_acc(m: types.Model, qLD: wp.array3d(dtype=wp.float32), leveladr: int):
+  def qLD_acc(m: types.Model, L: wp.array3d(dtype=wp.float32), leveladr: int):
     worldid, nodeid = wp.tid()
     update = m.qLD_sparse_updates[leveladr + nodeid]
     i, k, Madr_ki = update[0], update[1], update[2]
     Madr_i = m.dof_Madr[i]
     # tmp = M(k,i) / M(k,k)
-    tmp = qLD[worldid, 0, Madr_ki] / qLD[worldid, 0, m.dof_Madr[k]]
+    tmp = L[worldid, 0, Madr_ki] / L[worldid, 0, m.dof_Madr[k]]
     for j in range(m.dof_Madr[i + 1] - Madr_i):
       # M(i,j) -= M(k,j) * tmp
-      wp.atomic_sub(qLD[worldid, 0], Madr_i + j, qLD[worldid, 0, Madr_ki + j] * tmp)
+      wp.atomic_sub(L[worldid, 0], Madr_i + j, L[worldid, 0, Madr_ki + j] * tmp)
     # M(k,i) = tmp
-    qLD[worldid, 0, Madr_ki] = tmp
+    L[worldid, 0, Madr_ki] = tmp
 
   @wp.kernel
   def qLDiag_div(
     m: types.Model,
-    qLD: wp.array3d(dtype=wp.float32),
-    qLDiagInv: wp.array2d(dtype=wp.float32),
+    L: wp.array3d(dtype=wp.float32),
+    D: wp.array2d(dtype=wp.float32),
   ):
     worldid, dofid = wp.tid()
-    qLDiagInv[worldid, dofid] = 1.0 / qLD[worldid, 0, m.dof_Madr[dofid]]
+    D[worldid, dofid] = 1.0 / L[worldid, 0, m.dof_Madr[dofid]]
 
-  wp.copy(qLD, qM)
+  wp.copy(L, M)
 
   leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
 
   for i in range(len(leveladr) - 1, -1, -1):
     adr, size = leveladr[i], levelsize[i]
-    wp.launch(qLD_acc, dim=(d.nworld, size), inputs=[m, qLD, adr])
+    wp.launch(qLD_acc, dim=(d.nworld, size), inputs=[m, L, adr])
 
-  wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, qLD, qLDiagInv])
+  wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, L, D])
 
 
-def _factor_m_dense(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array):
+def _factor_m_dense(m: types.Model, d: types.Data, M: wp.array, L: wp.array):
   """Dense Cholesky factorizaton of inertia-like matrix M, assumed spd."""
 
   # TODO(team): develop heuristic for block dim, or make configurable
@@ -289,19 +289,19 @@ def _factor_m_dense(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array):
     def cholesky(
       m: types.Model,
       leveladr: int,
-      qM: wp.array3d(dtype=wp.float32),
-      qLD: wp.array3d(dtype=wp.float32),
+      M: wp.array3d(dtype=wp.float32),
+      L: wp.array3d(dtype=wp.float32),
     ):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_dense_tileid[leveladr + nodeid]
-      qM_tile = wp.tile_load(
-        qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      M_tile = wp.tile_load(
+        M[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
       )
-      qLD_tile = wp.tile_cholesky(qM_tile)
-      wp.tile_store(qLD[worldid], qLD_tile, offset=(dofid, dofid))
+      L_tile = wp.tile_cholesky(M_tile)
+      wp.tile_store(L[worldid], L_tile, offset=(dofid, dofid))
 
     wp.launch_tiled(
-      cholesky, dim=(d.nworld, size), inputs=[m, adr, qM, qLD], block_dim=block_dim
+      cholesky, dim=(d.nworld, size), inputs=[m, adr, M, L], block_dim=block_dim
     )
 
   leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
@@ -311,28 +311,28 @@ def _factor_m_dense(m: types.Model, d: types.Data, qM: wp.array, qLD: wp.array):
     cholesky(leveladr[i], levelsize[i], int(tilesize[i]))
 
 
-def factor_m(m: types.Model, d: types.Data, qM, qLD, qLDiagInv=None):
+def factor_m(m: types.Model, d: types.Data, M, L, D=None):
   """Factorizaton of inertia-like matrix M, assumed spd."""
   if wp.static(m.opt.is_sparse):
-    assert qLDiagInv is not None
-    _factor_m_sparse(m, d, qM, qLD, qLDiagInv)
+    assert D is not None
+    _factor_m_sparse(m, d, M, L, D)
   else:
-    _factor_m_dense(m, d, qM, qLD)
+    _factor_m_dense(m, d, M, L)
 
 
 def _solve_m_sparse(
   m: types.Model,
   d: types.Data,
-  qLD: wp.array,
-  qLDiagInv: wp.array,
+  L: wp.array,
+  D: wp.array,
   input: wp.array,
   output: wp.array,
 ):
   @wp.kernel
   def solve_m_sparse(
     m: types.Model,
-    qLD: wp.array3d(dtype=wp.float32),
-    qLDiagInv: wp.array2d(dtype=wp.float32),
+    L: wp.array3d(dtype=wp.float32),
+    D: wp.array2d(dtype=wp.float32),
     inout: wp.array2d(dtype=wp.float32),
   ):
     worldid = wp.tid()
@@ -343,13 +343,13 @@ def _solve_m_sparse(
       j = m.dof_parentid[i]
 
       while j >= 0:
-        inout[worldid, j] = inout[worldid, j] - qLD[worldid, 0, madr_ij] * inout[worldid, i]
+        inout[worldid, j] = inout[worldid, j] - L[worldid, 0, madr_ij] * inout[worldid, i]
         madr_ij += 1
         j = m.dof_parentid[j]
 
     # y <- inv(D) * y
     for i in range(m.nv):
-      inout[worldid, i] = inout[worldid, i] * qLDiagInv[worldid, i]
+      inout[worldid, i] = inout[worldid, i] * D[worldid, i]
 
     # y <- inv(L) * y;
     for i in range(m.nv):
@@ -357,16 +357,16 @@ def _solve_m_sparse(
       j = m.dof_parentid[i]
 
       while j >= 0:
-        inout[worldid, i] = inout[worldid, i] - qLD[worldid, 0, madr_ij] * inout[worldid, j]
+        inout[worldid, i] = inout[worldid, i] - L[worldid, 0, madr_ij] * inout[worldid, j]
         madr_ij += 1
         j = m.dof_parentid[j]
 
   wp.copy(output, input)
-  wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, qLD, qLDiagInv, output])
+  wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, L, D, output])
 
 
 def _solve_m_dense(
-  m: types.Model, d: types.Data, qLD: wp.array, input: wp.array, output: wp.array
+  m: types.Model, d: types.Data, L: wp.array, input: wp.array, output: wp.array
 ):
   # TODO(team): develop heuristic for block dim, or make configurable
   block_dim = 32
@@ -376,23 +376,23 @@ def _solve_m_dense(
     def cholesky_solve(
       m: types.Model,
       leveladr: int,
-      qLD: wp.array3d(dtype=wp.float32),
+      L: wp.array3d(dtype=wp.float32),
       input: wp.array2d(dtype=wp.float32),
       output: wp.array2d(dtype=wp.float32),
     ):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_dense_tileid[leveladr + nodeid]
-      qLD_tile = wp.tile_load(
-        qLD[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      L_tile = wp.tile_load(
+        L[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
       )
       input_tile = wp.tile_load(input[worldid], shape=(tilesize), offset=dofid)
-      output_tile = wp.tile_cholesky_solve(qLD_tile, input_tile)
+      output_tile = wp.tile_cholesky_solve(L_tile, input_tile)
       wp.tile_store(output[worldid], output_tile, offset=dofid)
 
     wp.launch_tiled(
       cholesky_solve,
       dim=(d.nworld, size),
-      inputs=[m, adr, qLD, input, output],
+      inputs=[m, adr, L, input, output],
       block_dim=block_dim,
     )
 
@@ -406,8 +406,8 @@ def _solve_m_dense(
 def solve_m(
   m: types.Model,
   d: types.Data,
-  qLD: wp.array,
-  qLDiagInv: wp.array,
+  L: wp.array,
+  D: wp.array,
   input: wp.array2d(dtype=wp.float32),
   output: wp.array2d(dtype=wp.float32),
   block_dim: int = 32,
@@ -415,9 +415,9 @@ def solve_m(
   """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
 
   if m.opt.is_sparse:
-    _solve_m_sparse(m, d, qLD, qLDiagInv, input, output)
+    _solve_m_sparse(m, d, L, D, input, output)
   else:
-    _solve_m_dense(m, d, qLD, input, output)
+    _solve_m_dense(m, d, L, input, output)
 
 
 def rne(m: types.Model, d: types.Data):
