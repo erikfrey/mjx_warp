@@ -22,6 +22,8 @@ def _advance(
 ) -> types.Data:
   """Advance state and time given activation derivatives and acceleration."""
 
+  # TODO(team): can we assume static timesteps?
+
   @wp.kernel
   def next_activation(
     m: types.Model, d: types.Data, act_dot_in: wp.array2d(dtype=wp.float32)
