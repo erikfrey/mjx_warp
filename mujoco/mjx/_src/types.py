@@ -10,13 +10,7 @@ from mujoco import mjx
 
 MJ_MINVAL = wp.constant(1e-15)
 
-
-class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
-  pass
-
-
-vec10 = vec10f
-
+# disable flags - TODO(team): make this bullet-proof.
 MJ_DSBL_CONSTRAINT = 1 << 0
 MJ_DSBL_EQUALITY = 1 << 1
 MJ_DSBL_FRICTIONLOSS = 1 << 2
@@ -33,6 +27,10 @@ MJ_DSBL_SENSOR = 1 << 12
 MJ_DSBL_MIDPHASE = 1 << 13
 MJ_DSBL_EULERDAMP = 1 << 14
 
+class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
+  pass
+
+vec10 = vec10f
 
 @wp.struct
 class Option:
