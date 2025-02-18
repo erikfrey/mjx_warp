@@ -325,48 +325,48 @@ def _solve_m_sparse(
   d: types.Data,
   qLD: wp.array,
   qLDiagInv: wp.array,
-  x: wp.array,
-  y: wp.array,
+  input: wp.array,
+  output: wp.array,
 ):
   @wp.kernel
   def solve_m_sparse(
     m: types.Model,
     qLD: wp.array3d(dtype=wp.float32),
     qLDiagInv: wp.array2d(dtype=wp.float32),
-    y: wp.array2d(dtype=wp.float32),
+    inout: wp.array2d(dtype=wp.float32),
   ):
     worldid = wp.tid()
 
-    # x <- inv(L') * x;
+    # y <- inv(L') * y;
     for i in range(m.nv - 1, -1, -1):
       madr_ij = m.dof_Madr[i] + 1
       j = m.dof_parentid[i]
 
       while j >= 0:
-        y[worldid, j] = y[worldid, j] - qLD[worldid, 0, madr_ij] * y[worldid, i]
+        inout[worldid, j] = inout[worldid, j] - qLD[worldid, 0, madr_ij] * inout[worldid, i]
         madr_ij += 1
         j = m.dof_parentid[j]
 
-    # x <- inv(D) * x
+    # y <- inv(D) * y
     for i in range(m.nv):
-      y[worldid, i] = y[worldid, i] * qLDiagInv[worldid, i]
+      inout[worldid, i] = inout[worldid, i] * qLDiagInv[worldid, i]
 
-    # x <- inv(L) * x;
+    # y <- inv(L) * y;
     for i in range(m.nv):
       madr_ij = m.dof_Madr[i] + 1
       j = m.dof_parentid[i]
 
       while j >= 0:
-        y[worldid, i] = y[worldid, i] - qLD[worldid, 0, madr_ij] * y[worldid, j]
+        inout[worldid, i] = inout[worldid, i] - qLD[worldid, 0, madr_ij] * inout[worldid, j]
         madr_ij += 1
         j = m.dof_parentid[j]
 
-  wp.copy(y, x)
-  wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, qLD, qLDiagInv, y])
+  wp.copy(output, input)
+  wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, qLD, qLDiagInv, output])
 
 
 def _solve_m_dense(
-  m: types.Model, d: types.Data, qLD: wp.array, x: wp.array, y: wp.array
+  m: types.Model, d: types.Data, qLD: wp.array, input: wp.array, output: wp.array
 ):
   # TODO(team): develop heuristic for block dim, or make configurable
   block_dim = 32
@@ -377,22 +377,22 @@ def _solve_m_dense(
       m: types.Model,
       leveladr: int,
       qLD: wp.array3d(dtype=wp.float32),
-      x: wp.array2d(dtype=wp.float32),
-      y: wp.array2d(dtype=wp.float32),
+      input: wp.array2d(dtype=wp.float32),
+      output: wp.array2d(dtype=wp.float32),
     ):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_dense_tileid[leveladr + nodeid]
       qLD_tile = wp.tile_load(
         qLD[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
       )
-      x_tile = wp.tile_load(x[worldid], shape=(tilesize), offset=dofid)
-      y_tile = wp.tile_cholesky_solve(qLD_tile, x_tile)
-      wp.tile_store(y[worldid], y_tile, offset=dofid)
+      input_tile = wp.tile_load(input[worldid], shape=(tilesize), offset=dofid)
+      output_tile = wp.tile_cholesky_solve(qLD_tile, input_tile)
+      wp.tile_store(output[worldid], output_tile, offset=dofid)
 
     wp.launch_tiled(
       cholesky_solve,
       dim=(d.nworld, size),
-      inputs=[m, adr, qLD, x, y],
+      inputs=[m, adr, qLD, input, output],
       block_dim=block_dim,
     )
 
@@ -408,16 +408,16 @@ def solve_m(
   d: types.Data,
   qLD: wp.array,
   qLDiagInv: wp.array,
-  x: wp.array2d(dtype=wp.float32),
-  y: wp.array2d(dtype=wp.float32),
+  input: wp.array2d(dtype=wp.float32),
+  output: wp.array2d(dtype=wp.float32),
   block_dim: int = 32,
 ):
   """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
 
   if m.opt.is_sparse:
-    _solve_m_sparse(m, d, qLD, qLDiagInv, x, y)
+    _solve_m_sparse(m, d, qLD, qLDiagInv, input, output)
   else:
-    _solve_m_dense(m, d, qLD, x, y)
+    _solve_m_dense(m, d, qLD, input, output)
 
 
 def rne(m: types.Model, d: types.Data):
