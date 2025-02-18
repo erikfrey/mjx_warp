@@ -15,7 +15,7 @@ def _advance(
   """Advance state and time given activation derivatives and acceleration."""
 
   @wp.func
-  def quat_integrate_wp(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
+  def quat_integrate(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
     """Integrates a quaternion given angular velocity and dt."""
     norm_ = wp.length(v)
     v = wp.normalize(v)  # does that need proper zero gradient handling?
@@ -100,7 +100,7 @@ def _advance(
       )
       qvel_ang = wp.vec3(qvel[dof_adr + 3], qvel[dof_adr + 4], qvel[dof_adr + 5])
 
-      qpos_quat_new = quat_integrate_wp(qpos_quat, qvel_ang, m.timestep)
+      qpos_quat_new = quat_integrate(qpos_quat, qvel_ang, m.timestep)
 
       qpos[qpos_adr] = qpos_new[0]
       qpos[qpos_adr + 1] = qpos_new[1]
@@ -119,7 +119,7 @@ def _advance(
       )
       qvel_ang = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
-      qpos_quat_new = quat_integrate_wp(qpos_quat, qvel_ang, m.timestep)
+      qpos_quat_new = quat_integrate(qpos_quat, qvel_ang, m.timestep)
 
       qpos[qpos_adr] = qpos_quat_new[0]
       qpos[qpos_adr + 1] = qpos_quat_new[1]
