@@ -11,6 +11,7 @@ from . import math
 from . import passive
 from . import smooth
 
+from .types import array2df
 from .types import Model
 from .types import Data
 from .types import MJ_MINVAL
@@ -30,7 +31,7 @@ def _advance(
 
   @wp.kernel
   def next_activation(
-    m: Model, d: Data, act_dot_in: wp.array2d(dtype=wp.float32)
+    m: Model, d: Data, act_dot_in: array2df,
   ):
     worldId, tid = wp.tid()
 
@@ -68,14 +69,14 @@ def _advance(
 
   @wp.kernel
   def advance_velocities(
-    m: Model, d: Data, qacc: wp.array2d(dtype=wp.float32)
+    m: Model, d: Data, qacc: array2df
   ):
     worldId, tid = wp.tid()
     d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.opt.timestep
 
   @wp.kernel
   def integrate_joint_positions(
-    m: Model, d: Data, qvel_in: wp.array2d(dtype=wp.float32)
+    m: Model, d: Data, qvel_in: array2df
   ):
     worldId, tid = wp.tid()
 
