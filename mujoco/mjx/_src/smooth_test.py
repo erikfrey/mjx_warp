@@ -87,7 +87,7 @@ class SmoothTest(parameterized.TestCase):
     qLD = d.qLD.numpy()[0].copy()
     d.qLD.zero_()
 
-    mjx.factor_m(m, d)
+    mjx.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv)
     _assert_eq(d.qLD.numpy()[0], qLD, 'qLD (dense)')
 
   @parameterized.parameters(True, False)
@@ -104,7 +104,7 @@ class SmoothTest(parameterized.TestCase):
 
     d.qacc_smooth.zero_()
 
-    mjx.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
+    mjx.solve_m(m, d, d.qLD, d.qLDiagInv, d.qacc_smooth, d.qfrc_smooth)
     _assert_eq(d.qacc_smooth.numpy()[0], qacc_smooth[0], 'qacc_smooth')
 
   def test_rne(self):
@@ -115,58 +115,6 @@ class SmoothTest(parameterized.TestCase):
 
     mjx.rne(m, d)
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, "qfrc_bias")
-
-  def test_solve_m_sparse(self):
-    """Tests solveM (sparse)"""
-    mjm, mjd, m, d = test_util.fixture("humanoid/humanoid.xml", sparse=True)
-
-    # zero the factorization
-    mujoco.mju_zero(mjd.qLD)
-    d.qLD.zero_()
-
-    # re-run the factorization
-    mujoco.mj_factorM(mjm, mjd)
-    mjx.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv)
-
-    _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, "qLD (sparse)")
-
-    # zero the output
-    d.qacc_smooth.zero_()
-    mujoco.mju_zero(mjd.qacc_smooth)
-
-    # run the solve
-    mjx.solve_m(m, d, d.qLD, d.qLDiagInv, d.qfrc_smooth, d.qacc_smooth)
-    mujoco.mj_solveM(
-      mjm, mjd, mjd.qacc_smooth.reshape(1, mjm.nv), mjd.qfrc_smooth.reshape(1, mjm.nv)
-    )  # why is the order of arguments different here?
-
-    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, "qacc_smooth (sparse)")
-
-  def test_solve_m_dense(self):
-    """Tests solveM (sparse)"""
-    mjm, mjd, m, d = test_util.fixture("humanoid/humanoid.xml", sparse=False)
-
-    # construct dense M for comparison
-    qM = np.zeros((mjm.nv, mjm.nv))
-    mujoco.mj_fullM(mjm, qM, mjd.qM)
-    _assert_eq(d.qM.numpy()[0], qM, "qM (dense)")
-
-    # cholesky factor for both
-    qLD = np.linalg.cholesky(qM, upper=True)
-    mjx.factor_m(m, d, d.qM, d.qLD)
-
-    # sanity comparison
-    _assert_eq(d.qLD.numpy()[0].T, qLD, "qLD (dense)")
-
-    # zero the output
-    d.qacc_smooth.zero_()
-    mujoco.mju_zero(mjd.qacc_smooth)
-
-    # solve
-    mjx.solve_m(m, d, d.qLD, d.qLDiagInv, d.qfrc_smooth, d.qacc_smooth)
-    mjd.qacc_smooth = sp.linalg.cho_solve((qLD, False), mjd.qfrc_smooth)
-
-    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, "qacc_smooth (dense)")
 
   def test_com_vel(self):
     """Tests com_vel."""
