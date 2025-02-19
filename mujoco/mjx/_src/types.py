@@ -22,6 +22,7 @@ class Model:
   nsite: int
   nmocap: int
   nM: int
+  nconmax: int
   opt: Option
   qpos0: wp.array(dtype=wp.float32, ndim=1)
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
@@ -65,8 +66,31 @@ class Model:
 
 
 @wp.struct
+class Contact:
+   dist: wp.float32
+   pos: wp.vec3
+   frame: wp.mat33
+   includemargin: wp.float32
+   friction: wp.types.vector(length=5, dtype=wp.float32)
+   solref: wp.vec2
+   solreffriction: wp.vec2
+   solimp: wp.types.vector(length=5, dtype=wp.float32)
+   # TODO(team): should dim be int8?
+   dim: wp.int32
+   # TODO(team): should exclude be int8?
+   exclude: wp.int32
+   geom: wp.vec2i
+   efc_address: wp.int32
+   worldid: wp.int32
+
+
+@wp.struct
 class Data:
   nworld: int
+  nconmax: int
+  ncon: wp.array(dtype=wp.int32, ndim=1)
+  # TODO(team): is there a way to express a device scalar or just leave this array(length=1)?
+  ncon_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
@@ -102,3 +126,4 @@ class Data:
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  contact: wp.array(dtype=Contact, ndim=1)
