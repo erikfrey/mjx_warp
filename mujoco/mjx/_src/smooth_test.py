@@ -40,10 +40,9 @@ def _assert_eq(a, b, name):
 
 
 class SmoothTest(parameterized.TestCase):
-
   def test_kinematics(self):
     """Tests kinematics."""
-    _, mjd, m, d = test_util.fixture('pendula.xml')
+    _, mjd, m, d = test_util.fixture("pendula.xml")
 
     for arr in (d.xanchor, d.xaxis, d.xquat, d.xpos):
       arr.zero_()
@@ -57,7 +56,7 @@ class SmoothTest(parameterized.TestCase):
 
   def test_com_pos(self):
     """Tests com_pos."""
-    _, mjd, m, d = test_util.fixture('pendula.xml')
+    _, mjd, m, d = test_util.fixture("pendula.xml")
 
     for arr in (d.subtree_com, d.cinert, d.cdof):
       arr.zero_()
@@ -69,7 +68,7 @@ class SmoothTest(parameterized.TestCase):
 
   def test_crb(self):
     """Tests crb."""
-    _, mjd, m, d = test_util.fixture('pendula.xml')
+    _, mjd, m, d = test_util.fixture("pendula.xml")
 
     d.crb.zero_()
 
@@ -79,7 +78,7 @@ class SmoothTest(parameterized.TestCase):
 
   def test_factor_m_sparse(self):
     """Tests factor_m (sparse)."""
-    _, mjd, m, d = test_util.fixture('pendula.xml', sparse=True)
+    _, mjd, m, d = test_util.fixture("pendula.xml", sparse=True)
 
     for arr in (d.qLD, d.qLDiagInv):
       arr.zero_()
@@ -92,34 +91,40 @@ class SmoothTest(parameterized.TestCase):
     """Tests MJX factor_m (dense)."""
     # TODO(team): switch this to pendula.xml and merge with above test
     # after mmacklin's tile_cholesky fixes are in
-    _, mjd, m, d = test_util.fixture('humanoid/humanoid.xml', sparse=False)
+    _, mjd, m, d = test_util.fixture("humanoid/humanoid.xml", sparse=False)
 
     qLD = d.qLD.numpy()[0].copy()
     d.qLD.zero_()
 
     mjx.factor_m(m, d)
-    _assert_eq(d.qLD.numpy()[0], qLD, 'qLD (dense)')
+    _assert_eq(d.qLD.numpy()[0], qLD, "qLD (dense)")
 
   @parameterized.parameters(True, False)
   def test_solve_m(self, sparse: bool):
     """Tests solve_m."""
     # TODO(team): switch this to pendula.xml and merge with above test
     # after mmacklin's tile_cholesky fixes are in
-    fname = 'pendula.xml' if sparse else 'humanoid/humanoid.xml'
+    fname = "pendula.xml" if sparse else "humanoid/humanoid.xml"
     mjm, mjd, m, d = test_util.fixture(fname, sparse=sparse)
 
     qfrc_smooth = np.tile(mjd.qfrc_smooth, (1, 1))
-    qacc_smooth = np.zeros(shape=(1, mjm.nv,), dtype=float)
+    qacc_smooth = np.zeros(
+      shape=(
+        1,
+        mjm.nv,
+      ),
+      dtype=float,
+    )
     mujoco.mj_solveM(mjm, mjd, qacc_smooth, qfrc_smooth)
 
     d.qacc_smooth.zero_()
 
     mjx.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
-    _assert_eq(d.qacc_smooth.numpy()[0], qacc_smooth[0], 'qacc_smooth')
+    _assert_eq(d.qacc_smooth.numpy()[0], qacc_smooth[0], "qacc_smooth")
 
   def test_rne(self):
     """Tests rne."""
-    _, mjd, m, d = test_util.fixture('pendula.xml')
+    _, mjd, m, d = test_util.fixture("pendula.xml")
 
     d.qfrc_bias.zero_()
 
@@ -128,7 +133,7 @@ class SmoothTest(parameterized.TestCase):
 
   def test_com_vel(self):
     """Tests com_vel."""
-    _, mjd, m, d = test_util.fixture('pendula.xml')
+    _, mjd, m, d = test_util.fixture("pendula.xml")
 
     for arr in (d.cvel, d.cdof_dot):
       arr.zero_()

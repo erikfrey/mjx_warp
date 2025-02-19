@@ -88,9 +88,9 @@ class ForwardTest(absltest.TestCase):
     mjx.euler(m, d)
     mujoco.mj_Euler(mjm, mjd)
 
-    _assert_eq(d.qpos.numpy()[0], mjd.qpos, 'qpos')
-    _assert_eq(d.act.numpy()[0], mjd.act, 'act')
-    
+    _assert_eq(d.qpos.numpy()[0], mjd.qpos, "qpos")
+    _assert_eq(d.act.numpy()[0], mjd.act, "act")
+
     # also test sparse
     mjm.opt.jacobian = mujoco.mjtJacobian.mjJAC_SPARSE
     mjd = mujoco.MjData(mjm)

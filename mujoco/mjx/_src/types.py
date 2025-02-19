@@ -36,12 +36,15 @@ MJ_DSBL_SENSOR = 1 << 12
 MJ_DSBL_MIDPHASE = 1 << 13
 MJ_DSBL_EULERDAMP = 1 << 14
 
+
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
+
 
 vec10 = vec10f
 array2df = wp.array2d(dtype=wp.float32)
 array3df = wp.array3d(dtype=wp.float32)
+
 
 @wp.struct
 class Option:
@@ -66,7 +69,7 @@ class Model:
   opt: Option
   qpos0: wp.array(dtype=wp.float32, ndim=1)
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
-  body_tree: wp.array(dtype=wp.int32, ndim=1)   # warp only
+  body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_update_tree: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
   qLD_update_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only

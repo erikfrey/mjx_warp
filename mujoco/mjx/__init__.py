@@ -28,7 +28,6 @@ from ._src.smooth import com_pos
 from ._src.smooth import com_vel
 from ._src.smooth import crb
 from ._src.smooth import factor_m
-from ._src.smooth import solve_m
 from ._src.smooth import kinematics
 from ._src.smooth import rne
 from ._src.smooth import solve_m

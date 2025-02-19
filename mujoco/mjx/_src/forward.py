@@ -41,7 +41,9 @@ def _advance(
 
   @wp.kernel
   def next_activation(
-    m: Model, d: Data, act_dot_in: array2df,
+    m: Model,
+    d: Data,
+    act_dot_in: array2df,
   ):
     worldId, tid = wp.tid()
 
@@ -78,16 +80,12 @@ def _advance(
     acts[act_adr] = act
 
   @wp.kernel
-  def advance_velocities(
-    m: Model, d: Data, qacc: array2df
-  ):
+  def advance_velocities(m: Model, d: Data, qacc: array2df):
     worldId, tid = wp.tid()
     d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.opt.timestep
 
   @wp.kernel
-  def integrate_joint_positions(
-    m: Model, d: Data, qvel_in: array2df
-  ):
+  def integrate_joint_positions(m: Model, d: Data, qvel_in: array2df):
     worldId, tid = wp.tid()
 
     jnt_type = m.jnt_type[tid]
@@ -189,11 +187,11 @@ def euler(m: Model, d: Data) -> Data:
       wp.copy(d.qM_integration, d.qM)
       wp.launch(add_damping_sum_qfrc_kernel_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
     else:
-      wp.launch(add_damping_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d])
+      wp.launch(
+        add_damping_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d]
+      )
 
-  
   if not m.opt.disableflags & MJ_DSBL_EULERDAMP:
-
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_LD(

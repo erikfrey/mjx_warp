@@ -354,9 +354,11 @@ def factor_i(m: Model, d: Data, M, L, D=None):
   else:
     _factor_m_dense(m, d, M, L)
 
+
 def factor_m(m: Model, d: Data):
   """Factorizaton of inertia-like matrix M, assumed spd."""
   factor_i(m, d, d.qM, d.qLD, d.qLDiagInv)
+
 
 def rne(m: Model, d: Data):
   """Computes inverse dynamics using Newton-Euler algorithm."""
@@ -500,7 +502,9 @@ def com_vel(m: Model, d: Data):
     wp.launch(_level, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
 
-def _solve_m_sparse(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2df):
+def _solve_m_sparse(
+  m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2df
+):
   """Computes sparse backsubstitution: x = inv(L'*D*L)*y"""
 
   @wp.kernel
@@ -580,6 +584,7 @@ def solve_LD(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2
     _solve_m_sparse(m, d, L, D, x, y)
   else:
     _solve_m_dense(m, d, L, x, y)
+
 
 def solve_m(m: Model, d: Data, x: array2df, y: array2df):
   """Computes backsubstitution: x = qLD * y."""
