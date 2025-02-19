@@ -13,22 +13,24 @@ from . import smooth
 
 from .types import Model
 from .types import Data
+from .types import MJ_MINVAL
+from .types import MJ_DSBL_EULERDAMP
 
 
 def _advance(
-  m: types.Model,
-  d: types.Data,
+  m: Model,
+  d: Data,
   act_dot: wp.array,
   qacc: wp.array,
   qvel: Optional[wp.array] = None,
-) -> types.Data:
+) -> Data:
   """Advance state and time given activation derivatives and acceleration."""
 
   # TODO(team): can we assume static timesteps?
 
   @wp.kernel
   def next_activation(
-    m: types.Model, d: types.Data, act_dot_in: wp.array2d(dtype=wp.float32)
+    m: Model, d: Data, act_dot_in: wp.array2d(dtype=wp.float32)
   ):
     worldId, tid = wp.tid()
 
@@ -54,7 +56,7 @@ def _advance(
 
     # advance the actuation
     if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
-      tau = wp.select(dyn_prm < types.MJ_MINVAL, dyn_prm, types.MJ_MINVAL)
+      tau = wp.select(dyn_prm < MJ_MINVAL, dyn_prm, MJ_MINVAL)
       act = act + act_dot * tau * (1.0 - wp.exp(-m.opt.timestep / tau))
     else:
       act = act + act_dot * m.opt.timestep
@@ -66,14 +68,14 @@ def _advance(
 
   @wp.kernel
   def advance_velocities(
-    m: types.Model, d: types.Data, qacc: wp.array2d(dtype=wp.float32)
+    m: Model, d: Data, qacc: wp.array2d(dtype=wp.float32)
   ):
     worldId, tid = wp.tid()
     d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.opt.timestep
 
   @wp.kernel
   def integrate_joint_positions(
-    m: types.Model, d: types.Data, qvel_in: wp.array2d(dtype=wp.float32)
+    m: Model, d: Data, qvel_in: wp.array2d(dtype=wp.float32)
   ):
     worldId, tid = wp.tid()
 
@@ -144,13 +146,13 @@ def _advance(
   return d
 
 
-def euler(m: types.Model, d: types.Data) -> types.Data:
+def euler(m: Model, d: Data) -> Data:
   """Euler integrator, semi-implicit in velocity."""
   # integrate damping implicitly
 
-  def add_damping_sum_qfrc(m: types.Model, d: types.Data, is_sparse: bool):
+  def add_damping_sum_qfrc(m: Model, d: Data, is_sparse: bool):
     @wp.kernel
-    def add_damping_sum_qfrc_kernel_sparse(m: types.Model, d: types.Data):
+    def add_damping_sum_qfrc_kernel_sparse(m: Model, d: Data):
       worldId, tid = wp.tid()
 
       dof_Madr = m.dof_Madr[tid]
@@ -161,7 +163,7 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
       )
 
     @wp.kernel
-    def add_damping_sum_qfrc_kernel_dense(m: types.Model, d: types.Data):
+    def add_damping_sum_qfrc_kernel_dense(m: Model, d: Data):
       worldid, i, j = wp.tid()
 
       damping = wp.select(i == j, 0.0, m.opt.timestep * m.dof_damping[i])
@@ -179,7 +181,7 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
       wp.launch(add_damping_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d])
 
   
-  if not m.opt.disableflags & types.MJ_DSBL_EULERDAMP:
+  if not m.opt.disableflags & MJ_DSBL_EULERDAMP:
 
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)

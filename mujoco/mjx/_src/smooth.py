@@ -345,8 +345,8 @@ def factor_m(m: Model, d: Data, M, L, D=None):
 
 
 def _solve_m_sparse(
-  m: types.Model,
-  d: types.Data,
+  m: Model,
+  d: Data,
   L: wp.array,
   D: wp.array,
   input: wp.array,
@@ -354,7 +354,7 @@ def _solve_m_sparse(
 ):
   @wp.kernel
   def solve_m_sparse(
-    m: types.Model,
+    m: Model,
     L: wp.array3d(dtype=wp.float32),
     D: wp.array2d(dtype=wp.float32),
     inout: wp.array2d(dtype=wp.float32),
@@ -390,7 +390,7 @@ def _solve_m_sparse(
 
 
 def _solve_m_dense(
-  m: types.Model, d: types.Data, L: wp.array, input: wp.array, output: wp.array
+  m: Model, d: Data, L: wp.array, input: wp.array, output: wp.array
 ):
   # TODO(team): develop heuristic for block dim, or make configurable
   block_dim = 32
@@ -398,7 +398,7 @@ def _solve_m_dense(
   def cholesky_solve(adr, size, tilesize):
     @wp.kernel
     def cholesky_solve(
-      m: types.Model,
+      m: Model,
       leveladr: int,
       L: wp.array3d(dtype=wp.float32),
       input: wp.array2d(dtype=wp.float32),
@@ -428,8 +428,8 @@ def _solve_m_dense(
 
 
 def solve_m(
-  m: types.Model,
-  d: types.Data,
+  m: Model,
+  d: Data,
   L: wp.array,
   D: wp.array,
   input: wp.array2d(dtype=wp.float32),
