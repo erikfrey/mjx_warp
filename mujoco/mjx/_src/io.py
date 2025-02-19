@@ -24,24 +24,36 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
   m.nM = mjm.nM
+  m.opt.gravity = wp.vec3(mjm.opt.gravity)
+  m.opt.is_sparse = support.is_sparse(mjm)
+  m.opt.timestep = mjm.opt.timestep
+  m.opt.disableflags = mjm.opt.disableflags
+ 
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
 
   # body_tree is BFS ordering of body ids
-  body_tree, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
+  # body_treeadr contains starting index of each body tree level
+  bodies, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
   for i in range(mjm.nbody):
     body_depth[i] = body_depth[mjm.body_parentid[i]] + 1
-    body_tree.setdefault(body_depth[i], []).append(i)
-  # body_leveladr, body_levelsize specify the bounds of level ranges in body_level
-  body_levelsize = np.array([len(body_tree[i]) for i in range(len(body_tree))])
-  body_leveladr = np.cumsum(np.insert(body_levelsize, 0, 0))[:-1]
-  body_tree = sum([body_tree[i] for i in range(len(body_tree))], [])
+    bodies.setdefault(body_depth[i], []).append(i)
+  body_tree = np.concatenate([bodies[i] for i in range(len(bodies))])
+  tree_off = [0] + [len(bodies[i]) for i in range(len(bodies))]
+  body_treeadr = np.cumsum(tree_off)[:-1]
 
-  qLD_sparse_updates = np.empty(shape=(0, 3), dtype=int)
-  qld_dense_tilesize = np.empty(shape=(0,), dtype=int)
-  qld_dense_tileid = np.empty(shape=(0,), dtype=int)
+  m.body_tree = wp.array(body_tree, dtype=wp.int32, ndim=1)
+  m.body_treeadr = wp.array(body_treeadr, dtype=wp.int32, ndim=1, device="cpu")
+
+  qLD_update_tree = np.empty(shape=(0, 3), dtype=int)
+  qLD_update_treeadr = np.empty(shape=(0,), dtype=int)
+  qLD_tile = np.empty(shape=(0,), dtype=int)
+  qLD_tileadr = np.empty(shape=(0,), dtype=int)
+  qLD_tilesize = np.empty(shape=(0,), dtype=int)
+
   if support.is_sparse(mjm):
-    # track qLD updates for factor_m
+    # qLD_update_tree has dof tree ordering of qLD updates for sparse factor m
+    # qLD_update_treeadr contains starting index of each dof tree level
     qLD_updates, dof_depth = {}, np.zeros(mjm.nv, dtype=int) - 1
     for k in range(mjm.nv):
       dof_depth[k] = dof_depth[mjm.dof_parentid[k]] + 1
@@ -52,36 +64,30 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
         i = mjm.dof_parentid[i]
         Madr_ki += 1
 
-    # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in qLD updates
-    qLD_levelsize = np.array([len(qLD_updates[i]) for i in range(len(qLD_updates))])
-    qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
-    qLD_sparse_updates = np.array(
-      sum([qLD_updates[i] for i in range(len(qLD_updates))], [])
-    )
+    # qLD_treeadr contains starting indicies of each level of sparse updates
+    qLD_update_tree = np.concatenate([qLD_updates[i] for i in range(len(qLD_updates))])
+    tree_off = [0] + [len(qLD_updates[i]) for i in range(len(qLD_updates))]
+    qLD_update_treeadr = np.cumsum(tree_off)[:-1]
   else:
-    # track tile sizes for dense cholesky
+    # qLD_tile has the dof id of each tile in qLD for dense factor m
+    # qLD_tileadr contains starting index in qLD_tile of each tile group
+    # qLD_tilesize has the square tile size of each tile group
     tile_corners = [i for i in range(mjm.nv) if mjm.dof_parentid[i] == -1]
     tiles = {}
     for i in range(len(tile_corners)):
       tile_beg = tile_corners[i]
       tile_end = mjm.nv if i == len(tile_corners) - 1 else tile_corners[i + 1]
       tiles.setdefault(tile_end - tile_beg, []).append(tile_beg)
-    # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in cholesky tiles
-    qLD_levelsize = np.array([len(tiles[sz]) for sz in sorted(tiles.keys())])
-    qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
-    qld_dense_tilesize = np.array(sorted(tiles.keys()))
-    qld_dense_tileid = np.array(sum([tiles[sz] for sz in sorted(tiles.keys())], []))
+    qLD_tile = np.concatenate([tiles[sz] for sz in sorted(tiles.keys())])
+    tile_off = [0] + [len(tiles[sz]) for sz in sorted(tiles.keys())]
+    qLD_tileadr = np.cumsum(tile_off)[:-1]
+    qLD_tilesize = np.array(sorted(tiles.keys()))
 
-  m.body_leveladr = wp.array(body_leveladr, dtype=wp.int32, ndim=1, device="cpu")
-  m.body_levelsize = wp.array(body_levelsize, dtype=wp.int32, ndim=1, device="cpu")
-  m.body_tree = wp.array(body_tree, dtype=wp.int32, ndim=1)
-  m.qLD_leveladr = wp.array(qLD_leveladr, dtype=wp.int32, ndim=1, device="cpu")
-  m.qLD_levelsize = wp.array(qLD_levelsize, dtype=wp.int32, ndim=1, device="cpu")
-  m.qLD_sparse_updates = wp.array(qLD_sparse_updates, dtype=wp.vec3i, ndim=1)
-  m.qLD_dense_tilesize = wp.array(
-    qld_dense_tilesize, dtype=wp.int32, ndim=1, device="cpu"
-  )
-  m.qLD_dense_tileid = wp.array(qld_dense_tileid, dtype=wp.int32, ndim=1)
+  m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
+  m.qLD_update_treeadr = wp.array(qLD_update_treeadr, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_tile = wp.array(qLD_tile, dtype=wp.int32, ndim=1)
+  m.qLD_tileadr = wp.array(qLD_tileadr, dtype=wp.int32, ndim=1, device='cpu')
+  m.qLD_tilesize = wp.array(qLD_tilesize, dtype=wp.int32, ndim=1, device='cpu')
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
@@ -112,10 +118,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
-  m.opt.gravity = wp.vec3(mjm.opt.gravity)
-  m.opt.is_sparse = support.is_sparse(mjm)
-  m.opt.timestep = mjm.opt.timestep
-  m.opt.disableflags = mjm.opt.disableflags
 
   return m
 
@@ -194,7 +196,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   else:
     qM = np.zeros((mjm.nv, mjm.nv))
     mujoco.mj_fullM(mjm, qM, mjd.qM)
-    qLD = np.linalg.cholesky(qM, upper=True)
+    qLD = np.linalg.cholesky(qM)
 
   # TODO(taylorhowell): sparse actuator_moment
   actuator_moment = np.zeros((mjm.nu, mjm.nv))
@@ -231,9 +233,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qM = wp.array(tile(qM), dtype=wp.float32, ndim=3)
   d.qLD = wp.array(tile(qLD), dtype=wp.float32, ndim=3)
   d.qLDiagInv = wp.array(tile(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
-  d.actuator_velocity = wp.array(
-    tile(mjd.actuator_velocity), dtype=wp.float32, ndim=2
-  )
+  d.actuator_velocity = wp.array(tile(mjd.actuator_velocity), dtype=wp.float32, ndim=2)
   d.cvel = wp.array(tile(mjd.cvel), dtype=wp.spatial_vector, ndim=2)
   d.cdof_dot = wp.array(tile(mjd.cdof_dot), dtype=wp.spatial_vector, ndim=2)
   d.qfrc_bias = wp.array(tile(mjd.qfrc_bias), dtype=wp.float32, ndim=2)

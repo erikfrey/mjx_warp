@@ -1,14 +1,15 @@
 import warp as wp
 
 from . import math
-from . import types
+from .types import Model
+from .types import Data
 
 
-def passive(m: types.Model, d: types.Data):
+def passive(m: Model, d: Data):
   """Adds all passive forces."""
 
   @wp.kernel
-  def _spring(m: types.Model, d: types.Data):
+  def _spring(m: Model, d: Data):
     worldid, jntid = wp.tid()
     stiffness = m.jnt_stiffness[jntid]
     dofid = m.jnt_dofadr[jntid]
@@ -66,7 +67,7 @@ def passive(m: types.Model, d: types.Data):
       d.qfrc_spring[worldid, dofid] = -stiffness * fdif
 
   @wp.kernel
-  def _damper_passive(m: types.Model, d: types.Data):
+  def _damper_passive(m: Model, d: Data):
     worldid, dofid = wp.tid()
     damping = m.dof_damping[dofid]
     qfrc_damper = -damping * d.qvel[worldid, dofid]

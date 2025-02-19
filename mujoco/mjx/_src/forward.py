@@ -10,7 +10,9 @@ import warp as wp
 from . import math
 from . import passive
 from . import smooth
-from . import types
+
+from .types import Model
+from .types import Data
 
 
 def _advance(
@@ -194,7 +196,7 @@ def euler(m: types.Model, d: types.Data) -> types.Data:
   return _advance(m, d, d.act_dot, d.qacc)
 
 
-def fwd_position(m: types.Model, d: types.Data):
+def fwd_position(m: Model, d: Data):
   """Position-dependent computations."""
 
   smooth.kinematics(m, d)
@@ -208,12 +210,12 @@ def fwd_position(m: types.Model, d: types.Data):
   # TODO(team): smooth.transmission
 
 
-def fwd_velocity(m: types.Model, d: types.Data):
+def fwd_velocity(m: Model, d: Data):
   """Velocity-dependent computations."""
 
   # TODO(team): tile operations?
   @wp.kernel
-  def _actuator_velocity(d: types.Data):
+  def _actuator_velocity(d: Data):
     worldid, actid, dofid = wp.tid()
     moment = d.actuator_moment[worldid, actid]
     qvel = d.qvel[worldid]
@@ -226,14 +228,14 @@ def fwd_velocity(m: types.Model, d: types.Data):
   smooth.rne(m, d)
 
 
-def fwd_acceleration(m: types.Model, d: types.Data):
+def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
 
   qfrc_applied = d.qfrc_applied
   # TODO(team) += support.xfrc_accumulate(m, d)
 
   @wp.kernel
-  def _qfrc_smooth(d: types.Data, qfrc_applied: wp.array(ndim=2, dtype=wp.float32)):
+  def _qfrc_smooth(d: Data, qfrc_applied: wp.array(ndim=2, dtype=wp.float32)):
     worldid, dofid = wp.tid()
     d.qfrc_smooth[worldid, dofid] = (
       d.qfrc_passive[worldid, dofid]
@@ -247,7 +249,7 @@ def fwd_acceleration(m: types.Model, d: types.Data):
   smooth.solve_m(m, d, d.qLD, d.qLDiagInv, d.qfrc_smooth, d.qacc_smooth)
 
 
-def forward(m: types.Model, d: types.Data):
+def forward(m: Model, d: Data):
   """Forward dynamics."""
 
   fwd_position(m, d)

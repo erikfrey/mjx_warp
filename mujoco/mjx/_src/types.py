@@ -31,6 +31,7 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
 
 vec10 = vec10f
+array2df = wp.array2d(dtype=wp.float32, ndim=2)
 
 @wp.struct
 class Option:
@@ -52,16 +53,16 @@ class Model:
   nsite: int
   nmocap: int
   nM: int
+  opt: Option
   qpos0: wp.array(dtype=wp.float32, ndim=1)
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
-  body_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  body_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qLD_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qLD_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qLD_sparse_updates: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
-  qLD_dense_tilesize: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qLD_dense_tileid: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  body_tree: wp.array(dtype=wp.int32, ndim=1)   # warp only
+  body_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qLD_update_tree: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
+  qLD_update_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qLD_tile: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qLD_tileadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qLD_tilesize: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_dofadr: wp.array(dtype=wp.int32, ndim=1)
   body_dofnum: wp.array(dtype=wp.int32, ndim=1)
   body_jntadr: wp.array(dtype=wp.int32, ndim=1)
@@ -97,7 +98,6 @@ class Model:
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
-  opt: Option
 
 
 @wp.struct
