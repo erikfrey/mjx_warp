@@ -10,6 +10,7 @@ from . import math
 from .types import Model
 from .types import Data
 from .types import array2df
+from .types import array3df
 from .types import vec10
 
 
@@ -343,107 +344,6 @@ def factor_m(m: Model, d: Data, M, L, D=None):
   else:
     _factor_m_dense(m, d, M, L)
 
-
-def _solve_m_sparse(
-  m: Model,
-  d: Data,
-  L: wp.array,
-  D: wp.array,
-  input: wp.array,
-  output: wp.array,
-):
-  @wp.kernel
-  def solve_m_sparse(
-    m: Model,
-    L: wp.array3d(dtype=wp.float32),
-    D: wp.array2d(dtype=wp.float32),
-    inout: wp.array2d(dtype=wp.float32),
-  ):
-    worldid = wp.tid()
-
-    # y <- inv(L') * y;
-    for i in range(m.nv - 1, -1, -1):
-      madr_ij = m.dof_Madr[i] + 1
-      j = m.dof_parentid[i]
-
-      while j >= 0:
-        inout[worldid, j] = inout[worldid, j] - L[worldid, 0, madr_ij] * inout[worldid, i]
-        madr_ij += 1
-        j = m.dof_parentid[j]
-
-    # y <- inv(D) * y
-    for i in range(m.nv):
-      inout[worldid, i] = inout[worldid, i] * D[worldid, i]
-
-    # y <- inv(L) * y;
-    for i in range(m.nv):
-      madr_ij = m.dof_Madr[i] + 1
-      j = m.dof_parentid[i]
-
-      while j >= 0:
-        inout[worldid, i] = inout[worldid, i] - L[worldid, 0, madr_ij] * inout[worldid, j]
-        madr_ij += 1
-        j = m.dof_parentid[j]
-
-  wp.copy(output, input)
-  wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, L, D, output])
-
-
-def _solve_m_dense(
-  m: Model, d: Data, L: wp.array, input: wp.array, output: wp.array
-):
-  # TODO(team): develop heuristic for block dim, or make configurable
-  block_dim = 32
-
-  def cholesky_solve(adr, size, tilesize):
-    @wp.kernel
-    def cholesky_solve(
-      m: Model,
-      leveladr: int,
-      L: wp.array3d(dtype=wp.float32),
-      input: wp.array2d(dtype=wp.float32),
-      output: wp.array2d(dtype=wp.float32),
-    ):
-      worldid, nodeid = wp.tid()
-      dofid = m.qLD_dense_tileid[leveladr + nodeid]
-      L_tile = wp.tile_load(
-        L[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
-      )
-      input_tile = wp.tile_load(input[worldid], shape=(tilesize), offset=dofid)
-      output_tile = wp.tile_cholesky_solve(L_tile, input_tile)
-      wp.tile_store(output[worldid], output_tile, offset=dofid)
-
-    wp.launch_tiled(
-      cholesky_solve,
-      dim=(d.nworld, size),
-      inputs=[m, adr, L, input, output],
-      block_dim=block_dim,
-    )
-
-  leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
-  tilesize = m.qLD_dense_tilesize.numpy()
-
-  for i in range(len(leveladr)):
-    cholesky_solve(leveladr[i], levelsize[i], int(tilesize[i]))
-
-
-def solve_m(
-  m: Model,
-  d: Data,
-  L: wp.array,
-  D: wp.array,
-  input: wp.array2d(dtype=wp.float32),
-  output: wp.array2d(dtype=wp.float32),
-  block_dim: int = 32,
-):
-  """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
-
-  if m.opt.is_sparse:
-    _solve_m_sparse(m, d, L, D, input, output)
-  else:
-    _solve_m_dense(m, d, L, input, output)
-
-
 def rne(m: Model, d: Data):
   """Computes inverse dynamics using Newton-Euler algorithm."""
 
@@ -586,27 +486,27 @@ def com_vel(m: Model, d: Data):
     wp.launch(_level, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
 
-def _solve_m_sparse(m: Model, d: Data, x: array2df, y: array2df):
+def _solve_m_sparse(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2df):
   """Computes sparse backsubstitution: x = inv(L'*D*L)*y"""
 
   @wp.kernel
-  def x_acc_up(m: Model, d: Data, x: array2df, leveladr: int):
+  def x_acc_up(m: Model, L: array3df, x: array2df, leveladr: int):
     worldid, nodeid = wp.tid()
     update = m.qLD_update_tree[leveladr + nodeid]
     i, k, Madr_ki = update[0], update[1], update[2]
-    wp.atomic_sub(x[worldid], i, d.qLD[worldid, 0, Madr_ki] * x[worldid, k])
+    wp.atomic_sub(x[worldid], i, L[worldid, 0, Madr_ki] * x[worldid, k])
 
   @wp.kernel
-  def qLDiag_mul(m: Model, d: Data, x: array2df):
+  def qLDiag_mul(D: array2df, x: array2df):
     worldid, dofid = wp.tid()
-    x[worldid, dofid] *= d.qLDiagInv[worldid, dofid]
+    x[worldid, dofid] *= D[worldid, dofid]
 
   @wp.kernel
-  def x_acc_down(m: Model, d: Data, x: array2df, leveladr: int):
+  def x_acc_down(m: Model, L: array3df, x: array2df, leveladr: int):
     worldid, nodeid = wp.tid()
     update = m.qLD_update_tree[leveladr + nodeid]
     i, k, Madr_ki = update[0], update[1], update[2]
-    wp.atomic_sub(x[worldid], k, d.qLD[worldid, 0, Madr_ki] * x[worldid, i])
+    wp.atomic_sub(x[worldid], k, L[worldid, 0, Madr_ki] * x[worldid, i])
 
   wp.copy(x, y)
 
@@ -617,19 +517,19 @@ def _solve_m_sparse(m: Model, d: Data, x: array2df, y: array2df):
       beg, end = qLD_update_treeadr[i], m.qLD_update_tree.shape[0]
     else:
       beg, end = qLD_update_treeadr[i], qLD_update_treeadr[i + 1]
-    wp.launch(x_acc_up, dim=(d.nworld, end - beg), inputs=[m, d, x, beg])
+    wp.launch(x_acc_up, dim=(d.nworld, end - beg), inputs=[m, L, x, beg])
 
-  wp.launch(qLDiag_mul, dim=(d.nworld, m.nv), inputs=[m, d, x])
+  wp.launch(qLDiag_mul, dim=(d.nworld, m.nv), inputs=[D, x])
 
   for i in range(len(qLD_update_treeadr)):
     if i == len(qLD_update_treeadr) - 1:
       beg, end = qLD_update_treeadr[i], m.qLD_update_tree.shape[0]
     else:
       beg, end = qLD_update_treeadr[i], qLD_update_treeadr[i + 1]
-    wp.launch(x_acc_down, dim=(d.nworld, end - beg), inputs=[m, d, x, beg])
+    wp.launch(x_acc_down, dim=(d.nworld, end - beg), inputs=[m, L, x, beg])
 
 
-def _solve_m_dense(m: Model, d: Data, x: array2df, y: array2df):
+def _solve_m_dense(m: Model, d: Data, L: array3df, x: array2df, y: array2df):
   """Computes dense backsubstitution: x = inv(L'*L)*y"""
 
   # TODO(team): develop heuristic for block dim, or make configurable
@@ -637,18 +537,18 @@ def _solve_m_dense(m: Model, d: Data, x: array2df, y: array2df):
 
   def tile_cho_solve(adr: int, size: int, tilesize: int):
     @wp.kernel
-    def cho_solve(m: Model, d: Data, x: array2df, y: array2df, leveladr: int):
+    def cho_solve(m: Model, L: array3df, x: array2df, y: array2df, leveladr: int):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]
       y_slice = wp.tile_load(y[worldid], shape=(tilesize,), offset=(dofid,))
-      qLD_tile = wp.tile_load(
-        d.qLD[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      L_tile = wp.tile_load(
+        L[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
       )
-      x_slice = wp.tile_cholesky_solve(qLD_tile, y_slice)
+      x_slice = wp.tile_cholesky_solve(L_tile, y_slice)
       wp.tile_store(x[worldid], x_slice, offset=(dofid,))
 
     wp.launch_tiled(
-      cho_solve, dim=(d.nworld, size), inputs=[m, d, x, y, adr], block_dim=block_dim
+      cho_solve, dim=(d.nworld, size), inputs=[m, L, x, y, adr], block_dim=block_dim
     )
 
   qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
@@ -659,10 +559,14 @@ def _solve_m_dense(m: Model, d: Data, x: array2df, y: array2df):
     tile_cho_solve(beg, end - beg, int(qLD_tilesize[i]))
 
 
-def solve_m(m: Model, d: Data, x: array2df, y: array2df):
+def solve_LD(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2df):
   """Computes backsubstitution: x = qLD * y."""
 
   if m.opt.is_sparse:
-    _solve_m_sparse(m, d, x, y)
+    _solve_m_sparse(m, d, L, D, x, y)
   else:
-    _solve_m_dense(m, d, x, y)
+    _solve_m_dense(m, d, L, x, y)
+
+def solve_m(m: Model, d: Data, x: array2df, y: array2df):
+  """Computes backsubstitution: x = qLD * y."""
+  solve_LD(m, d, d.qLD, d.qLDiagInv, x, y)

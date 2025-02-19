@@ -185,13 +185,13 @@ def euler(m: Model, d: Data) -> Data:
 
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
-    smooth.solve_m(
+    smooth.solve_LD(
       m,
       d,
       d.qLD_integration,
       d.qLDiagInv_integration,
-      d.qfrc_integration,
       d.qacc_integration,
+      d.qfrc_integration,
     )
     return _advance(m, d, d.act_dot, d.qacc_integration)
 
@@ -248,7 +248,7 @@ def fwd_acceleration(m: Model, d: Data):
 
   wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
 
-  smooth.solve_m(m, d, d.qLD, d.qLDiagInv, d.qfrc_smooth, d.qacc_smooth)
+  smooth.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
 
 
 def forward(m: Model, d: Data):
