@@ -56,9 +56,7 @@ class ForwardTest(absltest.TestCase):
     for arr in (d.qfrc_smooth, d.qacc_smooth):
       arr.zero_()
 
-    mjx.factor_m(
-      m, d, d.qM, d.qLD, d.qLDiagInv
-    )  # for dense, get tile cholesky factorization
+    mjx.factor_m(m, d)  # for dense, get tile cholesky factorization
     mjx.fwd_acceleration(m, d)
 
     _assert_eq(d.qfrc_smooth.numpy()[0], mjd.qfrc_smooth, "qfrc_smooth")

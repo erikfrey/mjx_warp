@@ -74,7 +74,7 @@ class SmoothTest(parameterized.TestCase):
     for arr in (d.qLD, d.qLDiagInv):
       arr.zero_()
 
-    mjx.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv)
+    mjx.factor_m(m, d)
     _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, "qLD (sparse)")
     _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, "qLDiagInv")
 
@@ -87,7 +87,7 @@ class SmoothTest(parameterized.TestCase):
     qLD = d.qLD.numpy()[0].copy()
     d.qLD.zero_()
 
-    mjx.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv)
+    mjx.factor_m(m, d)
     _assert_eq(d.qLD.numpy()[0], qLD, 'qLD (dense)')
 
   @parameterized.parameters(True, False)

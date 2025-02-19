@@ -270,11 +270,11 @@ def crb(m: Model, d: Data):
     wp.launch(qM_dense, dim=(d.nworld, m.nv), inputs=[m, d])
 
 
-def _factor_m_sparse(m: Model, d: Data, M: wp.array, L: wp.array, D: wp.array):
+def _factor_m_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
   """Sparse L'*D*L factorizaton of inertia-like matrix M, assumed spd."""
 
   @wp.kernel
-  def qLD_acc(m: Model, leveladr: int, L: wp.array3d(dtype=wp.float32)):
+  def qLD_acc(m: Model, leveladr: int, L: array3df):
     worldid, nodeid = wp.tid()
     update = m.qLD_update_tree[leveladr + nodeid]
     i, k, Madr_ki = update[0], update[1], update[2]
@@ -288,7 +288,7 @@ def _factor_m_sparse(m: Model, d: Data, M: wp.array, L: wp.array, D: wp.array):
     L[worldid, 0, Madr_ki] = tmp
 
   @wp.kernel
-  def qLDiag_div(m: Model, L: wp.array3d(dtype=wp.float32), D: wp.array2d(dtype=wp.float32),):
+  def qLDiag_div(m: Model, L: array3df, D: array2df):
     worldid, dofid = wp.tid()
     D[worldid, dofid] = 1.0 / L[worldid, 0, m.dof_Madr[dofid]]
 
@@ -314,7 +314,7 @@ def _factor_m_dense(m: Model, d: Data, M: wp.array, L: wp.array):
 
   def tile_cholesky(adr: int, size: int, tilesize: int):
     @wp.kernel
-    def cholesky(m: Model, leveladr: int, M: wp.array3d(dtype=wp.float32), L: wp.array3d(dtype=wp.float32)):
+    def cholesky(m: Model, leveladr: int, M: array3df, L: array3df):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]
       M_tile = wp.tile_load(
@@ -335,7 +335,7 @@ def _factor_m_dense(m: Model, d: Data, M: wp.array, L: wp.array):
     tile_cholesky(beg, end - beg, int(qLD_tilesize[i]))
 
 
-def factor_m(m: Model, d: Data, M, L, D=None):
+def factor_i(m: Model, d: Data, M, L, D=None):
   """Factorizaton of inertia-like matrix M, assumed spd."""
 
   if m.opt.is_sparse:
@@ -343,6 +343,10 @@ def factor_m(m: Model, d: Data, M, L, D=None):
     _factor_m_sparse(m, d, M, L, D)
   else:
     _factor_m_dense(m, d, M, L)
+
+def factor_m(m: Model, d: Data):
+  """Factorizaton of inertia-like matrix M, assumed spd."""
+  factor_i(m, d, d.qM, d.qLD, d.qLDiagInv)
 
 def rne(m: Model, d: Data):
   """Computes inverse dynamics using Newton-Euler algorithm."""

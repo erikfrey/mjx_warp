@@ -185,7 +185,7 @@ def euler(m: Model, d: Data) -> Data:
   if not m.opt.disableflags & MJ_DSBL_EULERDAMP:
 
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
-    smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
+    smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_LD(
       m,
       d,
@@ -207,7 +207,7 @@ def fwd_position(m: Model, d: Data):
   # TODO(team): smooth.camlight
   # TODO(team): smooth.tendon
   smooth.crb(m, d)
-  smooth.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv)
+  smooth.factor_m(m, d)
   # TODO(team): collision_driver.collision
   # TODO(team): constraint.make_constraint
   # TODO(team): smooth.transmission
