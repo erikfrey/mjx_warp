@@ -20,21 +20,21 @@ from mujoco import mjx
 MJ_MINVAL = wp.constant(1e-15)
 
 # disable flags - TODO(team): make this bullet-proof.
-MJ_DSBL_CONSTRAINT = 1 << 0
-MJ_DSBL_EQUALITY = 1 << 1
-MJ_DSBL_FRICTIONLOSS = 1 << 2
-MJ_DSBL_LIMIT = 1 << 3
-MJ_DSBL_CONTACT = 1 << 4
-MJ_DSBL_PASSIVE = 1 << 5
-MJ_DSBL_GRAVITY = 1 << 6
-MJ_DSBL_CLAMPCTRL = 1 << 7
-MJ_DSBL_WARMSTART = 1 << 8
-MJ_DSNL_FILTERPARENT = 1 << 9
-MJ_DSBL_ACTUATION = 1 << 10
-MJ_DSBL_REFSAFE = 1 << 11
-MJ_DSBL_SENSOR = 1 << 12
-MJ_DSBL_MIDPHASE = 1 << 13
-MJ_DSBL_EULERDAMP = 1 << 14
+MJ_DSBL_CONSTRAINT = mujoco.mjtDisableBit.mjDSBL_CONSTRAINT.value
+MJ_DSBL_EQUALITY = mujoco.mjtDisableBit.mjDSBL_EQUALITY.value
+MJ_DSBL_FRICTIONLOSS = mujoco.mjtDisableBit.mjDSBL_FRICTIONLOSS.value
+MJ_DSBL_LIMIT = mujoco.mjtDisableBit.mjDSBL_LIMIT.value
+MJ_DSBL_CONTACT = mujoco.mjtDisableBit.mjDSBL_CONTACT.value
+MJ_DSBL_PASSIVE = mujoco.mjtDisableBit.mjDSBL_PASSIVE.value
+MJ_DSBL_GRAVITY = mujoco.mjtDisableBit.mjDSBL_GRAVITY.value
+MJ_DSBL_CLAMPCTRL = mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL.value
+MJ_DSBL_WARMSTART = mujoco.mjtDisableBit.mjDSBL_WARMSTART.value
+MJ_DSNL_FILTERPARENT = mujoco.mjtDisableBit.mjDSBL_FILTERPARENT.value
+MJ_DSBL_ACTUATION = mujoco.mjtDisableBit.mjDSBL_ACTUATION.value
+MJ_DSBL_REFSAFE = mujoco.mjtDisableBit.mjDSBL_REFSAFE.value
+MJ_DSBL_SENSOR = mujoco.mjtDisableBit.mjDSBL_SENSOR.value
+MJ_DSBL_MIDPHASE = mujoco.mjtDisableBit.mjDSBL_MIDPHASE.value
+MJ_DSBL_EULERDAMP = mujoco.mjtDisableBit.mjDSBL_EULERDAMP.value
 
 
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
