@@ -46,7 +46,6 @@ array2df = wp.array2d(dtype=wp.float32)
 array3df = wp.array3d(dtype=wp.float32)
 
 
-
 @wp.struct
 class Option:
   gravity: wp.vec3
