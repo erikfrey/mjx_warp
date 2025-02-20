@@ -225,27 +225,27 @@ def implicit(m: Model, d: Data) -> Data:
   #
   @wp.kernel
   def actuator_bias_gain_vel(m: Model, d: Data, vel: array2df):
-    worldid, tid = wp.tid()
+    worldid, actid = wp.tid()
 
     bias_vel = 0.0
     gain_vel = 0.0
 
-    actuator_biastype = m.actuator_biastype[tid]
-    actuator_gaintype = m.actuator_gaintype[tid]
-    actuator_dyntype = m.actuator_dyntype[tid]
+    actuator_biastype = m.actuator_biastype[actid]
+    actuator_gaintype = m.actuator_gaintype[actid]
+    actuator_dyntype = m.actuator_dyntype[actid]
 
     if actuator_biastype == MJ_BIASTYPE_AFFINE:
-      bias_vel = m.actuator_biasprm[tid, 2]
+      bias_vel = m.actuator_biasprm[actid, 2]
 
     if actuator_gaintype == MJ_GAINTYPE_AFFINE:
-      gain_vel = m.actuator_gainprm[tid, 2]
+      gain_vel = m.actuator_gainprm[actid, 2]
 
-    ctrl = d.ctrl[worldid, tid]
+    ctrl = d.ctrl[worldid, actid]
 
     if actuator_dyntype != MJ_DYNTYPE_NONE:
-      ctrl = d.act[worldid, tid]
+      ctrl = d.act[worldid, actid]
 
-    vel[worldid, tid] = bias_vel + gain_vel * ctrl
+    vel[worldid, actid] = bias_vel + gain_vel * ctrl
 
   @wp.kernel
   def qderiv_add_damping(
@@ -254,69 +254,53 @@ def implicit(m: Model, d: Data) -> Data:
     worldid, tid = wp.tid()
     qderiv[worldid, tid, tid] = qderiv[worldid, tid, tid] - m.dof_damping[tid]
 
-  @wp.kernel
-  def subtract_qderiv_M(
-    m: Model,
-    qderiv: wp.array3d(dtype=wp.float32),
-    qM_integration: wp.array3d(dtype=wp.float32),
-  ):
-    worldid, i, j = wp.tid()
-    qM_integration[worldid, i, j] = (
-      qM_integration[worldid, i, j] - m.opt.timestep * qderiv[worldid, i, j]
-    )
+  def add_qderiv_sum_qfrc(m: Model, d: Data, qderiv: wp.array3df, is_sparse):
 
-  @wp.kernel
-  def sum_qfrc_smooth_constraint(m: Model, d: Data):
-    worldid, tid = wp.tid()
-    d.qfrc_integration[worldid, tid] = (
-      d.qfrc_smooth[worldid, tid] + d.qfrc_constraint[worldid, tid]
-    )
+    @wp.kernel
+    def add_qderiv_sum_qfrc_kernel_dense(m: Model, d: Data, qderiv: array3df):
+      worldid, i, j = wp.tid()
+
+      d.qM_integration[worldid, i, j] = d.qM[worldid, i, j] - m.opt.timestep * qderiv[worldid, i, j]
+
+      if i == 0:
+        d.qfrc_integration[worldid, j] = (
+          d.qfrc_smooth[worldid, j] + d.qfrc_constraint[worldid, j]
+        )
+
+    if is_sparse:
+      pass
+    else:
+      wp.launch(add_qderiv_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d])
+
 
   # do we need this here?
   qderiv = wp.zeros(shape=(d.nworld, m.nv, m.nv), dtype=wp.float32)
   qderiv_filled = False
 
   # qDeriv += d qfrc_actuator / d qvel
-  if not wp.static(m.opt.disableflags & MJ_DSBL_ACTUATION):
+  if not m.opt.disableflags & MJ_DSBL_ACTUATION:
     vel = wp.zeros(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
     wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
     qderiv_filled = True
 
-    qderiv = d.actuator_moment.T @ jp.diag(vel) @ d.actuator_moment
+    #qderiv = d.actuator_moment.T @ jp.diag(vel) @ d.actuator_moment
 
   # qDeriv += d qfrc_passive / d qvel
-  if not m.opt.disableflags & types.MJ_DSBL_PASSIVE:
+  if not m.opt.disableflags & MJ_DSBL_PASSIVE:
     # add damping to qderiv
-    wp.launch(qderiv_add_damping, dim=(m.nworld, m.nv), inputs=[m, d, qderiv])
+    wp.launch(qderiv_add_damping, dim=(d.nworld, m.nv), inputs=[m, d, qderiv])
     qderiv_filled = True
     # TODO: tendon
     # TODO: fluid drag, not supported in MJX right now
 
-  wp.copy(d.qacc_integration, d.qacc)
-
   if qderiv_filled:
-    if m.opt.is_sparse:
-      pass  # todo
-    else:
-      wp.copy(d.qM_integration, d.qM)
-      wp.launch(
-        subtract_qderiv_M,
-        dim=(m.nworld, m.nv, m.nv),
-        inputs=[m, qderiv, d.qM_integration],
-      )
+    add_qderiv_sum_qfrc(m, d, qderiv, m.opt.is_sparse)
+    smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
+    smooth.solve_LD(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qfrc_integration, d.qacc_integration)
 
-    wp.launch(sum_qfrc_smooth_constraint, dim=(m.nworld, m.nv), inputs=[m, d])
-    smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
-    smooth.solve_m(
-      m,
-      d,
-      d.qLD_integration,
-      d.qLDiagInv_integration,
-      d.qfrc_integration,
-      d.qacc_integration,
-    )
+    return _advance(m, d, d.act_dot, d.qacc_integration)
 
-  return _advance(m, d, d.act_dot, d.qacc_integration)
+  return _advance(m, d, d.act_dot, d.qacc)
 
 
 def fwd_position(m: Model, d: Data):

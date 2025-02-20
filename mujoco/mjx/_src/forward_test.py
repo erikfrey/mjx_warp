@@ -125,7 +125,7 @@ class ForwardTest(absltest.TestCase):
     np.testing.assert_allclose(d.qvel.numpy()[0], 1 + mjm.opt.timestep)
 
   def test_implicit(self):
-    mjm, mjd, m, d = self._load("humanoid/humanoid.xml")
+    mjm, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
 
     mjm.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
     mujoco.mj_implicit(mjm, mjd)
