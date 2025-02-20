@@ -363,59 +363,6 @@ def factor_i(m: Model, d: Data, M, L, D=None):
   else:
     _factor_i_dense(m, d, M, L)
 
-def solve_m(
-    m: types.Model, d: types.Data, qLD: wp.array, qLDiagInv: wp.array, x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32), block_dim: int = 32
-):
-  """Computes sparse backsubstitution:  x = inv(L'*D*L)*y ."""
-
-  TILE = m.nv
-  BLOCK_DIM = block_dim
-
-  @wp.kernel
-  def solve_m_dense(
-      qLD: wp.array3d(dtype=wp.float32), x: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32)
-  ):
-    worldid = wp.tid()
-    qLD_tile = wp.tile_load(qLD[worldid], shape=(TILE, TILE))
-    x_tile = wp.tile_load(x[worldid], shape=(TILE))
-    y_tile = wp.tile_cholesky_solve(qLD_tile, x_tile)
-    wp.tile_store(y[worldid], y_tile)
-
-  @wp.kernel
-  def solve_m_sparse(
-      m: types.Model, qLD: wp.array3d(dtype=wp.float32), qLDiagInv: wp.array2d(dtype=wp.float32), y: wp.array2d(dtype=wp.float32)
-  ):
-    worldid = wp.tid()
-
-    # x <- inv(L') * x;
-    for i in range(m.nv-1, -1, -1):
-      madr_ij = m.dof_Madr[i] + 1
-      j = m.dof_parentid[i]
-
-      while j >= 0:
-        y[worldid, j] = y[worldid, j] - qLD[worldid, 0, madr_ij] * y[worldid, i]
-        madr_ij += 1
-        j = m.dof_parentid[j]
-
-    # x <- inv(D) * x
-    for i in range(m.nv):
-      y[worldid, i] = y[worldid, i] * qLDiagInv[worldid, i]
-
-    # x <- inv(L) * x; 
-    for i in range(m.nv):
-      madr_ij = m.dof_Madr[i] + 1
-      j = m.dof_parentid[i]
-
-      while j >= 0:
-        y[worldid, i] = y[worldid, i] - qLD[worldid, 0, madr_ij] * y[worldid, j]
-        madr_ij += 1
-        j = m.dof_parentid[j]
-
-  if (m.opt.is_sparse):
-    wp.copy(y, x)
-    wp.launch(solve_m_sparse, dim=(d.nworld), inputs=[m, qLD, qLDiagInv, y])
-  else:
-    wp.launch_tiled(solve_m_dense, dim=(d.nworld), inputs=[qLD, x, y], block_dim=BLOCK_DIM)
 
 def factor_m(m: Model, d: Data):
   """Factorizaton of inertia-like matrix M, assumed spd."""
