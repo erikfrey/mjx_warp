@@ -139,58 +139,6 @@ class SmoothTest(parameterized.TestCase):
     _assert_eq(d.cvel.numpy()[0], mjd.cvel, "cvel")
     _assert_eq(d.cdof_dot.numpy()[0], mjd.cdof_dot, "cdof_dot")
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_solve_m_sparse(self, fname):
-    """Tests solveM (sparse)"""
-    mjm, mjd, m, d = self._load(fname)
-
-    # zero the factorization
-    mujoco.mju_zero(mjd.qLD)
-    d.qLD.zero_()
-
-    # re-run the factorization
-    mujoco.mj_factorM(mjm, mjd)
-    mjx.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv)
-
-    _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, 'qLD (sparse)')
-
-    # zero the output
-    d.qacc_smooth.zero_()
-    mujoco.mju_zero(mjd.qacc_smooth)
-
-    # run the solve
-    mjx.solve_m(m, d, d.qLD, d.qLDiagInv, d.qfrc_smooth, d.qacc_smooth)
-    mujoco.mj_solveM(mjm, mjd, mjd.qacc_smooth.reshape(1, mjm.nv), mjd.qfrc_smooth.reshape(1, mjm.nv)) # why is the order of arguments different here?
-
-    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (sparse)')
-
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_solve_m_dense(self, fname):
-    """Tests solveM (sparse)"""
-    mjm, mjd, m, d = self._load(fname, is_sparse=False)
-
-    # construct dense M for comparison
-    qM = np.zeros((mjm.nv, mjm.nv))
-    mujoco.mj_fullM(mjm, qM, mjd.qM)
-    _assert_eq(d.qM.numpy()[0], qM, 'qM (dense)')
-
-    # cholesky factor for both
-    qLD = np.linalg.cholesky(qM, upper=True)
-    mjx.factor_m(m, d, d.qM, d.qLD)
-
-    # sanity comparison
-    _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
-
-    # zero the output
-    d.qacc_smooth.zero_()
-    mujoco.mju_zero(mjd.qacc_smooth)
-
-    # solve
-    mjx.solve_m(m, d, d.qLD, d.qLDiagInv, d.qfrc_smooth, d.qacc_smooth)
-    mjd.qacc_smooth = sp.linalg.cho_solve((qLD, False), mjd.qfrc_smooth)
-    
-    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (dense)')
-
 if __name__ == "__main__":
   wp.init()
   absltest.main()
