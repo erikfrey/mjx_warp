@@ -45,15 +45,15 @@ def _advance(
     d: Data,
     act_dot_in: array2df,
   ):
-    worldId, tid = wp.tid()
+    worldId, actid = wp.tid()
 
     # get the high/low range for each actuator state
-    limited = m.actuator_actlimited[tid]
-    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[tid, 0])
-    range_high = wp.select(limited, wp.inf, m.actuator_actrange[tid, 1])
+    limited = m.actuator_actlimited[actid]
+    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[actid, 0])
+    range_high = wp.select(limited, wp.inf, m.actuator_actrange[actid, 1])
 
     # get the actual actuation - skip if -1 (means stateless actuator)
-    act_adr = m.actuator_actadr[tid]
+    act_adr = m.actuator_actadr[actid]
     if act_adr == -1:
       return
 
@@ -64,8 +64,8 @@ def _advance(
     act_dot = acts_dot[act_adr]
 
     # check dynType
-    dyn_type = m.actuator_dyntype[tid]
-    dyn_prm = m.actuator_dynprm[tid, 0]
+    dyn_type = m.actuator_dyntype[actid]
+    dyn_prm = m.actuator_dynprm[actid, 0]
 
     # advance the actuation
     if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
@@ -86,11 +86,11 @@ def _advance(
 
   @wp.kernel
   def integrate_joint_positions(m: Model, d: Data, qvel_in: array2df):
-    worldId, tid = wp.tid()
+    worldId, jntid = wp.tid()
 
-    jnt_type = m.jnt_type[tid]
-    qpos_adr = m.jnt_qposadr[tid]
-    dof_adr = m.jnt_dofadr[tid]
+    jnt_type = m.jnt_type[jntid]
+    qpos_adr = m.jnt_qposadr[jntid]
+    dof_adr = m.jnt_dofadr[jntid]
     qpos = d.qpos[worldId]
     qvel = qvel_in[worldId]
 

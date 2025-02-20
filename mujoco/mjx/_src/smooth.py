@@ -280,7 +280,7 @@ def crb(m: Model, d: Data):
     wp.launch(qM_dense, dim=(d.nworld, m.nv), inputs=[m, d])
 
 
-def _factor_m_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
+def _factor_i_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
   """Sparse L'*D*L factorizaton of inertia-like matrix M, assumed spd."""
 
   @wp.kernel
@@ -316,7 +316,7 @@ def _factor_m_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, L, D])
 
 
-def _factor_m_dense(m: Model, d: Data, M: wp.array, L: wp.array):
+def _factor_i_dense(m: Model, d: Data, M: wp.array, L: wp.array):
   """Dense Cholesky factorizaton of inertia-like matrix M, assumed spd."""
 
   # TODO(team): develop heuristic for block dim, or make configurable
@@ -350,9 +350,9 @@ def factor_i(m: Model, d: Data, M, L, D=None):
 
   if m.opt.is_sparse:
     assert D is not None
-    _factor_m_sparse(m, d, M, L, D)
+    _factor_i_sparse(m, d, M, L, D)
   else:
-    _factor_m_dense(m, d, M, L)
+    _factor_i_dense(m, d, M, L)
 
 
 def factor_m(m: Model, d: Data):
@@ -502,7 +502,7 @@ def com_vel(m: Model, d: Data):
     wp.launch(_level, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
 
-def _solve_m_sparse(
+def _solve_LD_sparse(
   m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2df
 ):
   """Computes sparse backsubstitution: x = inv(L'*D*L)*y"""
@@ -547,7 +547,7 @@ def _solve_m_sparse(
     wp.launch(x_acc_down, dim=(d.nworld, end - beg), inputs=[m, L, x, beg])
 
 
-def _solve_m_dense(m: Model, d: Data, L: array3df, x: array2df, y: array2df):
+def _solve_LD_dense(m: Model, d: Data, L: array3df, x: array2df, y: array2df):
   """Computes dense backsubstitution: x = inv(L'*L)*y"""
 
   # TODO(team): develop heuristic for block dim, or make configurable
@@ -581,9 +581,9 @@ def solve_LD(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2
   """Computes backsubstitution: x = qLD * y."""
 
   if m.opt.is_sparse:
-    _solve_m_sparse(m, d, L, D, x, y)
+    _solve_LD_sparse(m, d, L, D, x, y)
   else:
-    _solve_m_dense(m, d, L, x, y)
+    _solve_LD_dense(m, d, L, x, y)
 
 
 def solve_m(m: Model, d: Data, x: array2df, y: array2df):
