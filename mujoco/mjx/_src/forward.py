@@ -206,15 +206,16 @@ def euler(m: Model, d: Data) -> Data:
 
   return _advance(m, d, d.act_dot, d.qacc)
 
+
 def implicit(m: types.Model, d: types.Data) -> types.Data:
   """Integrates fully implicit in velocity."""
-  
-  # we might be able to exploit some sparsity here - 
+
+  # we might be able to exploit some sparsity here -
   # although setting to 0 is still needed somewhere.
   #
   # we only need to load ctrl if gain_vel is non zero.
-  # might make more sense to dispatch the load though 
-  # and throw it away later, because otherwise you'll 
+  # might make more sense to dispatch the load though
+  # and throw it away later, because otherwise you'll
   # just introduce a tight dependency.
   #
   @wp.kernel
@@ -233,7 +234,7 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
 
     if actuator_gaintype == types.MJ_GAINTYPE_AFFINE:
       gain_vel = m.actuator_gainprm[tid, 2]
-    
+
     ctrl = d.ctrl[worldid, tid]
 
     if actuator_dyntype != types.MJ_DYNTYPE_NONE:
@@ -242,28 +243,37 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
     vel[worldid, tid] = bias_vel + gain_vel * ctrl
 
   @wp.kernel
-  def qderiv_add_damping(m: types.Model, d: types.Data, qderiv: wp.array3d(dtype=wp.float32)):
+  def qderiv_add_damping(
+    m: types.Model, d: types.Data, qderiv: wp.array3d(dtype=wp.float32)
+  ):
     worldid, tid = wp.tid()
     qderiv[worldid, tid, tid] = qderiv[worldid, tid, tid] - m.dof_damping[tid]
 
   @wp.kernel
-  def subtract_qderiv_M(m: types.Model, qderiv: wp.array3d(dtype=wp.float32), qM_integration: wp.array3d(dtype=wp.float32)):
+  def subtract_qderiv_M(
+    m: types.Model,
+    qderiv: wp.array3d(dtype=wp.float32),
+    qM_integration: wp.array3d(dtype=wp.float32),
+  ):
     worldid, i, j = wp.tid()
-    qM_integration[worldid, i, j] = qM_integration[worldid, i, j] - m.opt.timestep * qderiv[worldid, i, j]
+    qM_integration[worldid, i, j] = (
+      qM_integration[worldid, i, j] - m.opt.timestep * qderiv[worldid, i, j]
+    )
 
   @wp.kernel
   def sum_qfrc_smooth_constraint(m: types.Model, d: types.Data):
     worldid, tid = wp.tid()
-    d.qfrc_integration[worldid, tid] = d.qfrc_smooth[worldid, tid] + d.qfrc_constraint[worldid, tid]
+    d.qfrc_integration[worldid, tid] = (
+      d.qfrc_smooth[worldid, tid] + d.qfrc_constraint[worldid, tid]
+    )
 
-  
   # do we need this here?
   qderiv = wp.zeros(shape=(m.nworld, m.nv, m.nv), dtype=wp.float32)
   qderiv_filled = False
 
   # qDeriv += d qfrc_actuator / d qvel
   if not m.opt.disableflags & types.MJ_DSBL_ACTUATION:
-    vel = wp.zeros(shape=(m.nworld, m.nu), dtype=wp.float32) # todo: remove
+    vel = wp.zeros(shape=(m.nworld, m.nu), dtype=wp.float32)  # todo: remove
     wp.launch(actuator_bias_gain_vel, dim=(m.nworld, m.nu), inputs=[m, d, vel])
     qderiv_filled = True
 
@@ -277,18 +287,29 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
     # TODO: tendon
     # TODO: fluid drag, not supported in MJX right now
 
-  wp.copy(d.qacc_integration, d.qacc) 
+  wp.copy(d.qacc_integration, d.qacc)
 
   if qderiv_filled:
-    if (m.opt.is_sparse):
-      pass #todo
+    if m.opt.is_sparse:
+      pass  # todo
     else:
       wp.copy(d.qM_integration, d.qM)
-      wp.launch(subtract_qderiv_M, dim=(m.nworld, m.nv, m.nv), inputs=[m, qderiv, d.qM_integration])
-    
+      wp.launch(
+        subtract_qderiv_M,
+        dim=(m.nworld, m.nv, m.nv),
+        inputs=[m, qderiv, d.qM_integration],
+      )
+
     wp.launch(sum_qfrc_smooth_constraint, dim=(m.nworld, m.nv), inputs=[m, d])
     smooth.factor_m(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
-    smooth.solve_m(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qfrc_integration, d.qacc_integration)
+    smooth.solve_m(
+      m,
+      d,
+      d.qLD_integration,
+      d.qLDiagInv_integration,
+      d.qfrc_integration,
+      d.qacc_integration,
+    )
 
   return _advance(m, d, d.act_dot, d.qacc_integration)
 

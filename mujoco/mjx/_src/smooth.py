@@ -54,9 +54,7 @@ def kinematics(m: Model, d: Data):
       qadr = m.jnt_qposadr[jntadr]
       # TODO(erikfrey): would it be better to use some kind of wp.copy here?
       xpos = wp.vec3(qpos[qadr], qpos[qadr + 1], qpos[qadr + 2])
-      xquat = wp.quat(
-          qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6]
-      )
+      xquat = wp.quat(qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6])
       d.xanchor[worldid, jntadr] = xpos
       d.xaxis[worldid, jntadr] = m.jnt_axis[jntadr]
     else:
@@ -122,9 +120,7 @@ def com_pos(m: Model, d: Data):
   @wp.kernel
   def subtree_com_init(m: Model, d: Data):
     worldid, bodyid = wp.tid()
-    d.subtree_com[worldid, bodyid] = (
-        d.xipos[worldid, bodyid] * m.body_mass[bodyid]
-    )
+    d.subtree_com[worldid, bodyid] = d.xipos[worldid, bodyid] * m.body_mass[bodyid]
 
   @wp.kernel
   def subtree_com_acc(m: Model, d: Data, leveladr: int):
@@ -144,9 +140,7 @@ def com_pos(m: Model, d: Data):
     mat = d.ximat[worldid, bodyid]
     inert = m.body_inertia[bodyid]
     mass = m.body_mass[bodyid]
-    dif = (
-        d.xipos[worldid, bodyid] - d.subtree_com[worldid, m.body_rootid[bodyid]]
-    )
+    dif = d.xipos[worldid, bodyid] - d.subtree_com[worldid, m.body_rootid[bodyid]]
     # express inertia in com-based frame (mju_inertCom)
 
     res = vec10()
@@ -184,10 +178,7 @@ def com_pos(m: Model, d: Data):
     xmat = wp.transpose(d.xmat[worldid, bodyid])
 
     # compute com-anchor vector
-    offset = (
-        d.subtree_com[worldid, m.body_rootid[bodyid]]
-        - d.xanchor[worldid, jntid]
-    )
+    offset = d.subtree_com[worldid, m.body_rootid[bodyid]] - d.xanchor[worldid, jntid]
 
     res = d.cdof[worldid]
     if jnt_type == 0:  # free

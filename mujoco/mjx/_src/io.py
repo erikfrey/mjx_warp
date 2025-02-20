@@ -196,9 +196,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   return d
 
 
-def put_data(
-    mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1
-) -> types.Data:
+def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
   d.time = mjd.time

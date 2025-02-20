@@ -33,30 +33,24 @@ _FUNCTION = flags.DEFINE_enum(
   "the function to run",
 )
 _MJCF = flags.DEFINE_string(
-    "mjcf", None, "path to model `.xml` or `.mjb`", required=True
+  "mjcf", None, "path to model `.xml` or `.mjb`", required=True
 )
 _BASE_PATH = flags.DEFINE_string(
-    "base_path", None, "base path, defaults to mujoco.mjx resource path"
+  "base_path", None, "base path, defaults to mujoco.mjx resource path"
 )
 _NSTEP = flags.DEFINE_integer("nstep", 1000, "number of steps per rollout")
-_BATCH_SIZE = flags.DEFINE_integer(
-    "batch_size", 4096, "number of parallel rollouts"
-)
+_BATCH_SIZE = flags.DEFINE_integer("batch_size", 4096, "number of parallel rollouts")
 _UNROLL = flags.DEFINE_integer("unroll", 1, "loop unroll length")
-_SOLVER = flags.DEFINE_enum(
-    "solver", "cg", ["cg", "newton"], "constraint solver"
-)
-_ITERATIONS = flags.DEFINE_integer(
-    "iterations", 1, "number of solver iterations"
-)
+_SOLVER = flags.DEFINE_enum("solver", "cg", ["cg", "newton"], "constraint solver")
+_ITERATIONS = flags.DEFINE_integer("iterations", 1, "number of solver iterations")
 _LS_ITERATIONS = flags.DEFINE_integer(
-    "ls_iterations", 4, "number of linesearch iterations"
+  "ls_iterations", 4, "number of linesearch iterations"
 )
 _IS_SPARSE = flags.DEFINE_bool(
   "is_sparse", True, "if model should create sparse mass matrices"
 )
 _OUTPUT = flags.DEFINE_enum(
-    "output", "text", ["text", "tsv"], "format to print results"
+  "output", "text", ["text", "tsv"], "format to print results"
 )
 
 

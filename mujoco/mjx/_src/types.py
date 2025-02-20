@@ -83,6 +83,7 @@ MJ_DYNTYPE_FILTEREXACT = 3
 MJ_DYNTYPE_MUSCLE = 4
 # unsupported: USER
 
+
 @wp.struct
 class Option:
   gravity: wp.vec3
