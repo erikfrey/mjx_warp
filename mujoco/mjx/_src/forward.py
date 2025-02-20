@@ -26,6 +26,11 @@ from .types import Model
 from .types import Data
 from .types import MJ_MINVAL
 from .types import MJ_DSBL_EULERDAMP
+from .types import MJ_DSBL_ACTUATION
+from .types import MJ_DSBL_PASSIVE
+from .types import MJ_BIASTYPE_AFFINE
+from .types import MJ_GAINTYPE_AFFINE
+from .types import MJ_DYNTYPE_NONE
 
 
 def _advance(
@@ -207,7 +212,7 @@ def euler(m: Model, d: Data) -> Data:
   return _advance(m, d, d.act_dot, d.qacc)
 
 
-def implicit(m: types.Model, d: types.Data) -> types.Data:
+def implicit(m: Model, d: Data) -> Data:
   """Integrates fully implicit in velocity."""
 
   # we might be able to exploit some sparsity here -
@@ -219,7 +224,7 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
   # just introduce a tight dependency.
   #
   @wp.kernel
-  def actuator_bias_gain_vel(m: types.Model, d: types.Data):
+  def actuator_bias_gain_vel(m: Model, d: Data, vel: array2df):
     worldid, tid = wp.tid()
 
     bias_vel = 0.0
@@ -229,29 +234,29 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
     actuator_gaintype = m.actuator_gaintype[tid]
     actuator_dyntype = m.actuator_dyntype[tid]
 
-    if actuator_biastype == types.MJ_BIASTYPE_AFFINE:
+    if actuator_biastype == MJ_BIASTYPE_AFFINE:
       bias_vel = m.actuator_biasprm[tid, 2]
 
-    if actuator_gaintype == types.MJ_GAINTYPE_AFFINE:
+    if actuator_gaintype == MJ_GAINTYPE_AFFINE:
       gain_vel = m.actuator_gainprm[tid, 2]
 
     ctrl = d.ctrl[worldid, tid]
 
-    if actuator_dyntype != types.MJ_DYNTYPE_NONE:
+    if actuator_dyntype != MJ_DYNTYPE_NONE:
       ctrl = d.act[worldid, tid]
 
     vel[worldid, tid] = bias_vel + gain_vel * ctrl
 
   @wp.kernel
   def qderiv_add_damping(
-    m: types.Model, d: types.Data, qderiv: wp.array3d(dtype=wp.float32)
+    m: Model, d: Data, qderiv: wp.array3d(dtype=wp.float32)
   ):
     worldid, tid = wp.tid()
     qderiv[worldid, tid, tid] = qderiv[worldid, tid, tid] - m.dof_damping[tid]
 
   @wp.kernel
   def subtract_qderiv_M(
-    m: types.Model,
+    m: Model,
     qderiv: wp.array3d(dtype=wp.float32),
     qM_integration: wp.array3d(dtype=wp.float32),
   ):
@@ -261,20 +266,20 @@ def implicit(m: types.Model, d: types.Data) -> types.Data:
     )
 
   @wp.kernel
-  def sum_qfrc_smooth_constraint(m: types.Model, d: types.Data):
+  def sum_qfrc_smooth_constraint(m: Model, d: Data):
     worldid, tid = wp.tid()
     d.qfrc_integration[worldid, tid] = (
       d.qfrc_smooth[worldid, tid] + d.qfrc_constraint[worldid, tid]
     )
 
   # do we need this here?
-  qderiv = wp.zeros(shape=(m.nworld, m.nv, m.nv), dtype=wp.float32)
+  qderiv = wp.zeros(shape=(d.nworld, m.nv, m.nv), dtype=wp.float32)
   qderiv_filled = False
 
   # qDeriv += d qfrc_actuator / d qvel
-  if not m.opt.disableflags & types.MJ_DSBL_ACTUATION:
-    vel = wp.zeros(shape=(m.nworld, m.nu), dtype=wp.float32)  # todo: remove
-    wp.launch(actuator_bias_gain_vel, dim=(m.nworld, m.nu), inputs=[m, d, vel])
+  if not wp.static(m.opt.disableflags & MJ_DSBL_ACTUATION):
+    vel = wp.zeros(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
+    wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
     qderiv_filled = True
 
     qderiv = d.actuator_moment.T @ jp.diag(vel) @ d.actuator_moment

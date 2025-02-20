@@ -17,6 +17,7 @@
 
 from ._src.forward import euler
 from ._src.forward import forward
+from ._src.forward import implicit
 from ._src.forward import fwd_acceleration
 from ._src.forward import fwd_position
 from ._src.forward import fwd_velocity

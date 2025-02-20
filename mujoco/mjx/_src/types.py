@@ -46,41 +46,24 @@ array2df = wp.array2d(dtype=wp.float32)
 array3df = wp.array3d(dtype=wp.float32)
 
 
-# disable bits
-MJ_DSBL_CONSTRAINT = 1 << 0
-MJ_DSBL_EQUALITY = 1 << 1
-MJ_DSBL_FRICTIONLOSS = 1 << 2
-MJ_DSBL_LIMIT = 1 << 3
-MJ_DSBL_CONTACT = 1 << 4
-MJ_DSBL_PASSIVE = 1 << 5
-MJ_DSBL_GRAVITY = 1 << 6
-MJ_DSBL_CLAMPCTRL = 1 << 7
-MJ_DSBL_WARMSTART = 1 << 8
-MJ_DSNL_FILTERPARENT = 1 << 9
-MJ_DSBL_ACTUATION = 1 << 10
-MJ_DSBL_REFSAFE = 1 << 11
-MJ_DSBL_SENSOR = 1 << 12
-MJ_DSBL_MIDPHASE = 1 << 13
-MJ_DSBL_EULERDAMP = 1 << 14
-
 # gaintype
-MJ_GAINTYPE_FIXED = 0
-MJ_GAINTYPE_AFFINE = 1
-MJ_GAINTYPE_MUSCLE = 2
+MJ_GAINTYPE_FIXED = mujoco.mjtGain.mjGAIN_FIXED.value
+MJ_GAINTYPE_AFFINE = mujoco.mjtGain.mjGAIN_AFFINE.value
+MJ_GAINTYPE_MUSCLE = mujoco.mjtGain.mjGAIN_MUSCLE.value
 # unsupported: USER
 
 # biastype
-MJ_BIASTYPE_NONE = 0
-MJ_BIASTYPE_AFFINE = 1
-MJ_BIASTYPE_MUSCLE = 2
+MJ_BIASTYPE_NONE = mujoco.mjtBias.mjBIAS_NONE.value
+MJ_BIASTYPE_AFFINE = mujoco.mjtBias.mjBIAS_AFFINE.value
+MJ_BIASTYPE_MUSCLE = mujoco.mjtBias.mjBIAS_MUSCLE.value
 # unsupported: USER
 
 # dyntype
-MJ_DYNTYPE_NONE = 0
-MJ_DYNTYPE_INTEGRATOR = 1
-MJ_DYNTYPE_FILTER = 2
-MJ_DYNTYPE_FILTEREXACT = 3
-MJ_DYNTYPE_MUSCLE = 4
+MJ_DYNTYPE_NONE = mujoco.mjtDyn.mjDYN_NONE.value
+MJ_DYNTYPE_INTEGRATOR = mujoco.mjtDyn.mjDYN_INTEGRATOR.value
+MJ_DYNTYPE_FILTER = mujoco.mjtDyn.mjDYN_FILTER.value
+MJ_DYNTYPE_FILTEREXACT = mujoco.mjtDyn.mjDYN_FILTEREXACT.value
+MJ_DYNTYPE_MUSCLE = mujoco.mjtDyn.mjDYN_MUSCLE.value
 # unsupported: USER
 
 
@@ -149,8 +132,12 @@ class Model:
   actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
   actuator_actrange: wp.array(dtype=wp.float32, ndim=2)
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
+  actuator_biastype: wp.array(dtype=wp.int32, ndim=1)
+  actuator_biasprm: wp.array(dtype=wp.float32, ndim=2)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
+  actuator_gaintype: wp.array(dtype=wp.int32, ndim=1)
+  actuator_gainprm: wp.array(dtype=wp.float32, ndim=2)
 
 
 @wp.struct
@@ -195,6 +182,7 @@ class Data:
   qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  ctrl: wp.array(dtype=wp.float32, ndim=2)
 
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)

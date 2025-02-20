@@ -133,6 +133,15 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
+  m.actuator_actlimited = wp.array(mjm.actuator_actlimited, dtype=wp.int32, ndim=1)
+  m.actuator_actrange = wp.array(mjm.actuator_actrange, dtype=wp.float32, ndim=2)
+  m.actuator_actadr = wp.array(mjm.actuator_actadr, dtype=wp.int32, ndim=1)
+  m.actuator_biastype = wp.array(mjm.actuator_biastype, dtype=wp.int32, ndim=1)
+  m.actuator_biasprm = wp.array(mjm.actuator_biasprm, dtype=wp.float32, ndim=2)
+  m.actuator_dyntype = wp.array(mjm.actuator_dyntype, dtype=wp.int32, ndim=1)
+  m.actuator_dynprm = wp.array(mjm.actuator_dynprm, dtype=wp.float32, ndim=2)
+  m.actuator_gaintype = wp.array(mjm.actuator_gaintype, dtype=wp.int32, ndim=1)
+  m.actuator_gainprm = wp.array(mjm.actuator_gainprm, dtype=wp.float32, ndim=2)
 
   return m
 
@@ -185,6 +194,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.ctrl = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
 
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -261,6 +271,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
+  d.ctrl = wp.array(tile(mjd.ctrl), dtype=wp.float32, ndim=2)
 
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
