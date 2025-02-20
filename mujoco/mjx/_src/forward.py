@@ -22,6 +22,7 @@ from . import passive
 from . import smooth
 
 from .types import array2df
+from .types import array3df
 from .types import Model
 from .types import Data
 from .types import MJ_MINVAL
@@ -215,14 +216,6 @@ def euler(m: Model, d: Data) -> Data:
 def implicit(m: Model, d: Data) -> Data:
   """Integrates fully implicit in velocity."""
 
-  # we might be able to exploit some sparsity here -
-  # although setting to 0 is still needed somewhere.
-  #
-  # we only need to load ctrl if gain_vel is non zero.
-  # might make more sense to dispatch the load though
-  # and throw it away later, because otherwise you'll
-  # just introduce a tight dependency.
-  #
   @wp.kernel
   def actuator_bias_gain_vel(m: Model, d: Data, vel: array2df):
     worldid, actid = wp.tid()
@@ -247,14 +240,33 @@ def implicit(m: Model, d: Data) -> Data:
 
     vel[worldid, actid] = bias_vel + gain_vel * ctrl
 
+  def qderiv_actuator_moment(m: Model, d: Data, qderiv: array3df, vel: array2df):
+
+    block_dim = 32
+    tilesize = m.nu
+
+    @wp.kernel
+    def qderiv_actuator_moment_kernel(m: Model, d: Data, qderiv: array3df, vel: array2df):
+      worldid = wp.tid()
+      actuator_moment_tile = wp.tile_load(d.actuator_moment[worldid], shape=(tilesize, tilesize))
+      actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
+      zeros = wp.tile_zeros(shape=(tilesize, tilesize), dtype=wp.float32)
+      vel_tile = wp.tile_load(vel[worldid], shape=(tilesize))
+      diag = wp.tile_diag_add(zeros, vel_tile)
+      amTVel = wp.tile_matmul(actuator_moment_T, diag)
+      qderiv_tile = wp.tile_matmul(amTVel, actuator_moment_tile)
+      wp.tile_store(qderiv[worldid], qderiv_tile)
+
+    wp.launch_tiled(qderiv_actuator_moment_kernel, dim=(d.nworld), inputs=[m, d, qderiv, vel], block_dim=block_dim)
+
   @wp.kernel
   def qderiv_add_damping(
-    m: Model, d: Data, qderiv: wp.array3d(dtype=wp.float32)
+    m: Model, d: Data, qderiv: array3df
   ):
     worldid, tid = wp.tid()
     qderiv[worldid, tid, tid] = qderiv[worldid, tid, tid] - m.dof_damping[tid]
 
-  def add_qderiv_sum_qfrc(m: Model, d: Data, qderiv: wp.array3df, is_sparse):
+  def add_qderiv_sum_qfrc(m: Model, d: Data, qderiv: array3df, is_sparse):
 
     @wp.kernel
     def add_qderiv_sum_qfrc_kernel_dense(m: Model, d: Data, qderiv: array3df):
@@ -270,7 +282,7 @@ def implicit(m: Model, d: Data) -> Data:
     if is_sparse:
       pass
     else:
-      wp.launch(add_qderiv_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d])
+      wp.launch(add_qderiv_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d, qderiv])
 
 
   # do we need this here?
@@ -284,6 +296,7 @@ def implicit(m: Model, d: Data) -> Data:
     qderiv_filled = True
 
     #qderiv = d.actuator_moment.T @ jp.diag(vel) @ d.actuator_moment
+    qderiv_actuator_moment(m, d, qderiv, vel)
 
   # qDeriv += d qfrc_passive / d qvel
   if not m.opt.disableflags & MJ_DSBL_PASSIVE:
