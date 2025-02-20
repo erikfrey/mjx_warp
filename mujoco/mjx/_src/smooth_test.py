@@ -1,112 +1,143 @@
+# Copyright 2025 The Physics-Next Project Developers
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Tests for smooth dynamics functions."""
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from etils import epath
-import numpy as np
-import scipy as sp
-import warp as wp
+import mujoco
+from mujoco import mjx
 
 import mujoco
 from mujoco import mjx
 
-# tolerance for difference between MuJoCo and MJX smooth calculations - mostly
+from . import test_util
+
+# tolerance for difference between MuJoCo and mjWarp smooth calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
 
 
 def _assert_eq(a, b, name):
   tol = _TOLERANCE * 10  # avoid test noise
-  err_msg = f'mismatch: {name}'
+  err_msg = f"mismatch: {name}"
   np.testing.assert_allclose(a, b, err_msg=err_msg, atol=tol, rtol=tol)
 
 
 class SmoothTest(parameterized.TestCase):
-
-  def _load(self, fname: str, is_sparse: bool = True):
-    path = epath.resource_path('mujoco.mjx') / 'test_data' / fname
-    mjm = mujoco.MjModel.from_xml_path(path.as_posix())
-    mjm.opt.jacobian = is_sparse
-    mjd = mujoco.MjData(mjm)
-    mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
-    mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
-    mujoco.mj_forward(mjm, mjd)
-    m = mjx.put_model(mjm)
-    d = mjx.put_data(mjm, mjd)
-    return mjm, mjd, m, d
-
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_kinematics(self, fname: str):
-    """Tests MJX kinematics."""
-    _, mjd, m, d = self._load(fname)
+  def test_kinematics(self):
+    """Tests kinematics."""
+    _, mjd, m, d = test_util.fixture("pendula.xml")
 
     for arr in (d.xanchor, d.xaxis, d.xquat, d.xpos):
       arr.zero_()
 
     mjx.kinematics(m, d)
 
-    _assert_eq(d.xanchor.numpy()[0], mjd.xanchor, 'xanchor')
-    _assert_eq(d.xaxis.numpy()[0], mjd.xaxis, 'xaxis')
-    _assert_eq(d.xquat.numpy()[0], mjd.xquat, 'xquat')
-    _assert_eq(d.xpos.numpy()[0], mjd.xpos, 'xpos')
+    _assert_eq(d.xanchor.numpy()[0], mjd.xanchor, "xanchor")
+    _assert_eq(d.xaxis.numpy()[0], mjd.xaxis, "xaxis")
+    _assert_eq(d.xquat.numpy()[0], mjd.xquat, "xquat")
+    _assert_eq(d.xpos.numpy()[0], mjd.xpos, "xpos")
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_com_pos(self, fname: str):
-    """Tests MJX com_pos."""
-    _, mjd, m, d = self._load(fname)
+  def test_com_pos(self):
+    """Tests com_pos."""
+    _, mjd, m, d = test_util.fixture("pendula.xml")
 
     for arr in (d.subtree_com, d.cinert, d.cdof):
       arr.zero_()
 
     mjx.com_pos(m, d)
-    _assert_eq(d.subtree_com.numpy()[0], mjd.subtree_com, 'subtree_com')
-    _assert_eq(d.cinert.numpy()[0], mjd.cinert, 'cinert')
-    _assert_eq(d.cdof.numpy()[0], mjd.cdof, 'cdof')
+    _assert_eq(d.subtree_com.numpy()[0], mjd.subtree_com, "subtree_com")
+    _assert_eq(d.cinert.numpy()[0], mjd.cinert, "cinert")
+    _assert_eq(d.cdof.numpy()[0], mjd.cdof, "cdof")
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_crb(self, fname: str):
-    """Tests MJX crb."""
-    _, mjd, m, d = self._load(fname)
+  def test_crb(self):
+    """Tests crb."""
+    _, mjd, m, d = test_util.fixture("pendula.xml")
 
-    for arr in (d.crb,):
-      arr.zero_()
+    d.crb.zero_()
 
     mjx.crb(m, d)
-    _assert_eq(d.crb.numpy()[0], mjd.crb, 'crb')
-    _assert_eq(d.qM.numpy()[0, 0], mjd.qM, 'qM')
+    _assert_eq(d.crb.numpy()[0], mjd.crb, "crb")
+    _assert_eq(d.qM.numpy()[0, 0], mjd.qM, "qM")
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_factor_m(self, fname: str):
-    """Tests MJX factor_m."""
-    _, mjd, m, d = self._load(fname)
+  def test_factor_m_sparse(self):
+    """Tests factor_m (sparse)."""
+    _, mjd, m, d = test_util.fixture("pendula.xml", sparse=True)
 
     for arr in (d.qLD, d.qLDiagInv):
       arr.zero_()
 
-    mjx.factor_m(m, d, d.qM, d.qLD, d.qLDiagInv)
-    _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, 'qLD (sparse)')
-    _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, 'qLDiagInv')
+    mjx.factor_m(m, d)
+    _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, "qLD (sparse)")
+    _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, "qLDiagInv")
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_factor_m_dense(self, fname):
+  def test_factor_m_dense(self):
     """Tests MJX factor_m (dense)."""
-    _, _, m, d = self._load(fname, is_sparse=False)
+    # TODO(team): switch this to pendula.xml and merge with above test
+    # after mmacklin's tile_cholesky fixes are in
+    _, mjd, m, d = test_util.fixture("humanoid/humanoid.xml", sparse=False)
 
     qLD = d.qLD.numpy()[0].copy()
     d.qLD.zero_()
 
-    mjx.factor_m(m, d, d.qM, d.qLD)
-    _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
+    mjx.factor_m(m, d)
+    _assert_eq(d.qLD.numpy()[0], qLD, "qLD (dense)")
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
-  def test_rne(self, fname):
-    """Tests MJX rne."""
-    _, mjd, m, d = self._load(fname, is_sparse=False)
+  @parameterized.parameters(True, False)
+  def test_solve_m(self, sparse: bool):
+    """Tests solve_m."""
+    # TODO(team): switch this to pendula.xml and merge with above test
+    # after mmacklin's tile_cholesky fixes are in
+    fname = "pendula.xml" if sparse else "humanoid/humanoid.xml"
+    mjm, mjd, m, d = test_util.fixture(fname, sparse=sparse)
+
+    qfrc_smooth = np.tile(mjd.qfrc_smooth, (1, 1))
+    qacc_smooth = np.zeros(
+      shape=(
+        1,
+        mjm.nv,
+      ),
+      dtype=float,
+    )
+    mujoco.mj_solveM(mjm, mjd, qacc_smooth, qfrc_smooth)
+
+    d.qacc_smooth.zero_()
+
+    mjx.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
+    _assert_eq(d.qacc_smooth.numpy()[0], qacc_smooth[0], "qacc_smooth")
+
+  def test_rne(self):
+    """Tests rne."""
+    _, mjd, m, d = test_util.fixture("pendula.xml")
 
     d.qfrc_bias.zero_()
 
     mjx.rne(m, d)
-    _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, 'qfrc_bias')
+    _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, "qfrc_bias")
+
+  def test_com_vel(self):
+    """Tests com_vel."""
+    _, mjd, m, d = test_util.fixture("pendula.xml")
+
+    for arr in (d.cvel, d.cdof_dot):
+      arr.zero_()
+
+    mjx.com_vel(m, d)
+    _assert_eq(d.cvel.numpy()[0], mjd.cvel, "cvel")
+    _assert_eq(d.cdof_dot.numpy()[0], mjd.cdof_dot, "cdof_dot")
 
   @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
   def test_solve_m_sparse(self, fname):
@@ -160,6 +191,6 @@ class SmoothTest(parameterized.TestCase):
     
     _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth (dense)')
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   wp.init()
   absltest.main()

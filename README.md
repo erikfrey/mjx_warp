@@ -1,6 +1,6 @@
-# mjx_warp
+# mjWarp
 
-Trying to learn Warp - this is MuJoCo's FK implemented in Warp.
+MuJoCo implemented in Warp.
 
 # Installing for development
 
@@ -13,76 +13,41 @@ pip install --upgrade pip
 pip install -e .
 ```
 
+During early development mjWarp is on the bleeding edge - you should install warp nightly:
+
+```
+pip install warp-lang --upgrade -f https://pypi.nvidia.com/warp-lang/
+```
+
 Now make sure everything is working:
 
 ```bash
 pytest
 ```
 
-Should print out something like `1 passed` at the end!
+Should print out something like `XX passed in XX.XXs` at the end!
 
 # Benchmarking
 
 Benchmark as follows:
 
 ```bash
-mjx-testspeed --mjcf=humanoid/humanoid.xml
+mjx-testspeed --function=forward --is_sparse=True --mjcf=humanoid/humanoid.xml --batch_size=8192
 ```
 
 Some relevant benchmarks on an NVIDIA GeForce RTX 4090:
 
-## kinematics
+## forward steps / sec (smooth dynamics only)
 
-| Implementation   | Batch Size |  Steps / Second |
-| ---------------- | ---------- | --------------- |
-| JAX<>CUDA FFI    | 4096       |  46M            |
-| Pure JAX         | 4096       |  47M            |
-| Warp             | 4096       |  79M            |
-| Pure CUDA        | 4096       |  86M            |
-| JAX<>CUDA FFI    | 8192       |  68M            |
-| Pure JAX         | 8192       |  82M            |
-| Taichi           | 8192       |  82M            |
-| Warp             | 8192       |  107M           |
-| Pure CUDA        | 8192       |  125M           |
+27 dofs per humanoid, 8k batch size.
 
-## com_pos
-
-```bash
-mjx-testspeed --function=com_pos --mjcf=humanoid/humanoid.xml --batch_size=8192
-```
-
-| Implementation   | Batch Size |  Steps / Second |
-| ---------------- | ---------- | --------------- |
-| JAX<>CUDA FFI    | 8192       |  65M            |
-| Pure CUDA        | 8192       |  87M            |
-| Pure JAX         | 8192       |  94M            |
-| Warp             | 8192       |  124M           |
-
-## crb
-
-```bash
-mjx-testspeed --function=crb --mjcf=humanoid/humanoid.xml --batch_size=8192
-```
-
-| Implementation   | Batch Size |  Steps / Second |
-| ---------------- | ---------- | --------------- |
-| JAX<>CUDA FFI    | 8192       |  26M            |
-| Pure CUDA        | 8192       |  67M            |
-| Pure JAX         | 8192       |  37M            |
-| Warp             | 8192       |  95M           |
-
-## factor_m
-
-```bash
-mjx-testspeed --function=factor_m --mjcf=humanoid/humanoid.xml --batch_size=8192
-```
-
-| Implementation   | Format | Batch Size |  Steps / Second |
-| ---------------- | ------ | ---------- | --------------- |
-| Pure JAX         | Sparse | 8192       |  17M            |
-| Warp             | Sparse | 8192       |  33M            |
-| Pure JAX         | Dense  | 8192       |  41M            |
-| CUDA (cuSOLVER)  | Dense  | 8192       |  50M            |
+| Num Humanoids   | MJX    |  mjWarp dense |  mjWarp sparse |
+| ----------------| -------| ------------- | -------------- |
+| 1               | 7.9M   |  15.6M        | 13.7M          |
+| 2               | 2.6M   |  7.4M         | 7.8M           |
+| 3               | 2.2M   |  4.6M         | 5.3M           |
+| 4               | 1.5M   |  3.3M         | 4.1M           |
+| 5               | 1.1M   |  ❌           | 3.2M           |
 
 # Ideas for what to try next
 
