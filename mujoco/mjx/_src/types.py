@@ -17,7 +17,7 @@ import warp as wp
 import mujoco
 from mujoco import mjx
 
-MJ_MINVAL = wp.constant(1e-15)
+MJ_MINVAL = mujoco.mjMINVAL
 
 # disable flags - TODO(team): make this bullet-proof.
 MJ_DSBL_CONSTRAINT = mujoco.mjtDisableBit.mjDSBL_CONSTRAINT.value
