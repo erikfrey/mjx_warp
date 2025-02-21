@@ -18,6 +18,11 @@ import mujoco
 from mujoco import mjx
 
 MJ_MINVAL = mujoco.mjMINVAL
+MJ_MINIMP = mujoco.mjMINIMP  # minimum constraint impedance
+MJ_MAXIMP = mujoco.mjMAXIMP  # maximum constraint impedance
+MJ_NREF = mujoco.mjNREF
+MJ_NIMP = mujoco.mjNIMP
+
 
 # disable flags - TODO(team): make this bullet-proof.
 MJ_DSBL_CONSTRAINT = mujoco.mjtDisableBit.mjDSBL_CONSTRAINT.value
@@ -37,6 +42,34 @@ MJ_DSBL_MIDPHASE = mujoco.mjtDisableBit.mjDSBL_MIDPHASE.value
 MJ_DSBL_EULERDAMP = mujoco.mjtDisableBit.mjDSBL_EULERDAMP.value
 
 
+# joint types
+MJ_JNT_FREE = mujoco.mjtJoint.mjJNT_FREE.value
+MJ_JNT_BALL = mujoco.mjtJoint.mjJNT_BALL.value
+MJ_JNT_SLIDE = mujoco.mjtJoint.mjJNT_SLIDE.value
+MJ_JNT_HINGE = mujoco.mjtJoint.mjJNT_HINGE.value
+
+
+# cone types
+MJ_CONE_PYRAMIDAL = mujoco.mjtCone.mjCONE_PYRAMIDAL.value
+MJ_CONE_ELLIPTIC = mujoco.mjtCone.mjCONE_ELLIPTIC.value
+
+
+# equality cosntraint type
+MJ_EQ_CONNECT = mujoco.mjtEq.mjEQ_CONNECT.value
+MJ_EQ_WELD = mujoco.mjtEq.mjEQ_WELD.value
+MJ_EQ_JOINT = mujoco.mjtEq.mjEQ_JOINT.value
+MJ_EQ_TENDON = mujoco.mjtEq.mjEQ_TENDON.value
+
+
+# object types
+MJ_OBJ_UNKNOWN = mujoco.mjtObj.mjOBJ_UNKNOWN.value
+MJ_OBJ_BODY = mujoco.mjtObj.mjOBJ_BODY.value
+MJ_OBJ_XBODY = mujoco.mjtObj.mjOBJ_XBODY.value
+MJ_OBJ_GEOM = mujoco.mjtObj.mjOBJ_GEOM.value
+MJ_OBJ_SITE = mujoco.mjtObj.mjOBJ_SITE.value
+MJ_OBJ_CAMERA = mujoco.mjtObj.mjOBJ_CAMERA.value
+
+
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
 
@@ -50,8 +83,10 @@ array3df = wp.array3d(dtype=wp.float32)
 class Option:
   gravity: wp.vec3
   is_sparse: bool  # warp only
-  timestep: float
+  cone: int
   disableflags: int
+  impratio: wp.float32
+  timestep: float
 
 
 @wp.struct
@@ -64,6 +99,7 @@ class Model:
   njnt: int
   ngeom: int
   nsite: int
+  neq: int
   nmocap: int
   nM: int
   opt: Option
@@ -89,35 +125,83 @@ class Model:
   body_rootid: wp.array(dtype=wp.int32, ndim=1)
   body_inertia: wp.array(dtype=wp.vec3, ndim=1)
   body_mass: wp.array(dtype=wp.float32, ndim=1)
+  body_invweight0: wp.array(dtype=wp.float32, ndim=2)
   jnt_bodyid: wp.array(dtype=wp.int32, ndim=1)
+  jnt_limited: wp.array(dtype=wp.int32, ndim=1)
+  jnt_solref: wp.array(dtype=wp.float32, ndim=2)
+  jnt_solimp: wp.array(dtype=wp.float32, ndim=2)
   jnt_type: wp.array(dtype=wp.int32, ndim=1)
   jnt_qposadr: wp.array(dtype=wp.int32, ndim=1)
   jnt_dofadr: wp.array(dtype=wp.int32, ndim=1)
   jnt_axis: wp.array(dtype=wp.vec3, ndim=1)
   jnt_pos: wp.array(dtype=wp.vec3, ndim=1)
+  jnt_range: wp.array(dtype=wp.float32, ndim=2)
+  jnt_margin: wp.array(dtype=wp.float32, ndim=1)
   jnt_stiffness: wp.array(dtype=wp.float32, ndim=1)
+  geom_bodyid: wp.array(dtype=wp.int32, ndim=1)
   geom_pos: wp.array(dtype=wp.vec3, ndim=1)
   geom_quat: wp.array(dtype=wp.quat, ndim=1)
+  site_bodyid: wp.array(dtype=wp.int32, ndim=1)
   site_pos: wp.array(dtype=wp.vec3, ndim=1)
   site_quat: wp.array(dtype=wp.quat, ndim=1)
   dof_bodyid: wp.array(dtype=wp.int32, ndim=1)
   dof_jntid: wp.array(dtype=wp.int32, ndim=1)
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
+  dof_solref: wp.array(dtype=wp.float32, ndim=2)
+  dof_solimp: wp.array(dtype=wp.float32, ndim=2)
+  dof_frictionloss: wp.array(dtype=wp.float32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
+  dof_invweight0: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
   actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
   actuator_actrange: wp.array(dtype=wp.float32, ndim=2)
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
+  eq_type: wp.array(dtype=wp.int32, ndim=1)
+  eq_obj1id: wp.array(dtype=wp.int32, ndim=1)
+  eq_obj2id: wp.array(dtype=wp.int32, ndim=1)
+  eq_objtype: wp.array(dtype=wp.int32, ndim=1)
+  eq_solref: wp.array(dtype=wp.float32, ndim=2)
+  eq_solimp: wp.array(dtype=wp.float32, ndim=2)
+  eq_data: wp.array(dtype=wp.float32, ndim=2)
+  opt: Option
+  # warp only
+  efc_eq_connect_id: wp.array(dtype=wp.int32, ndim=1)
+  efc_eq_weld_id: wp.array(dtype=wp.int32, ndim=1)
+  efc_eq_joint_id: wp.array(dtype=wp.int32, ndim=1)
+  efc_dof_friction_id: wp.array(dtype=wp.int32, ndim=1)
+  efc_jnt_ball_id: wp.array(dtype=wp.int32, ndim=1)
+  efc_jnt_slide_hinge_id: wp.array(dtype=wp.int32, ndim=1)
+
+
+@wp.struct
+class Contact:
+  dist: wp.array(dtype=wp.float32, ndim=2)
+  pos: wp.array(dtype=wp.vec3f, ndim=2)
+  frame: wp.array(dtype=wp.mat33f, ndim=2)
+  includemargin: wp.array(dtype=wp.float32, ndim=2)
+  friction: wp.array(dtype=wp.float32, ndim=3)
+  solref: wp.array(dtype=wp.float32, ndim=3)
+  solreffriction: wp.array(dtype=wp.float32, ndim=3)
+  solimp: wp.array(dtype=wp.float32, ndim=3)
+  dim: wp.array(dtype=wp.int32, ndim=2)
+  geom: wp.array(dtype=wp.int32, ndim=3)
+  efc_address: wp.array(dtype=wp.int32, ndim=2)
 
 
 @wp.struct
 class Data:
   nworld: int
+  ncon: int
+  ne: int
+  nf: int
+  nl: int
+  nefc: int
   time: float
   qpos: wp.array(dtype=wp.float32, ndim=2)
+  eq_active: wp.array(dtype=wp.int32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
@@ -155,6 +239,13 @@ class Data:
   qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  contact: Contact
+  efc_J: wp.array(dtype=wp.float32, ndim=3)
+  efc_pos: wp.array(dtype=wp.float32, ndim=2)
+  efc_margin: wp.array(dtype=wp.float32, ndim=2)
+  efc_frictionloss: wp.array(dtype=wp.float32, ndim=2)
+  efc_D: wp.array(dtype=wp.float32, ndim=2)
+  efc_aref: wp.array(dtype=wp.float32, ndim=2)
 
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)
