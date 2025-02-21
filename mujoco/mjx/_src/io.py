@@ -16,9 +16,6 @@
 import warp as wp
 import mujoco
 import numpy as np
-import warp as wp
-
-import mujoco
 
 from . import support
 from . import types
@@ -142,14 +139,14 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, nconmax: int = -1) -> types.
 
   # TODO(team): come up with good default heuristic for nconmax
   if nconmax == -1:
-    nconmax = nworld * mjm.ngeom * (mjm.ngeom -1) // 2
+    nconmax = nworld * mjm.ngeom * (mjm.ngeom - 1) // 2
     nconmax = min(nconmax, 10_000_000)
   d.nconmax = nconmax
 
   d.ncon = wp.zeros((nworld,), dtype=wp.int32)
   d.ncon_total = wp.zeros((1,), dtype=wp.int32)
-  d.time = 0.0
 
+  d.time = wp.zeros((nworld,), dtype=wp.float32, ndim=1)
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
   d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
@@ -204,25 +201,17 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, nconmax: int = -1) -> types.
   return d
 
 
-def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nconmax: int = -1) -> types.Data:
+def put_data(
+  mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nconmax: int = -1
+) -> types.Data:
   d = types.Data()
-  d.nworld = nworld
-  d.time = mjd.time
-
-  # TODO(erikfrey): would it be better to tile on the gpu?
-  def tile(x):
-    return np.tile(x, (nworld,) + (1,) * len(np.array(x).shape))
-
   d.nworld = nworld
 
   # TODO(team): come up with good default heuristic for nconmax
   if nconmax == -1:
-    nconmax = nworld * mjm.ngeom * (mjm.ngeom -1) // 2
+    nconmax = nworld * mjm.ngeom * (mjm.ngeom - 1) // 2
     nconmax = min(nconmax, 10_000_000)
   d.nconmax = nconmax
-
-  d.ncon = wp.array(tile(mjd.ncon), dtype=wp.int32, ndim=1)
-  d.ncon_total = wp.array([mjd.ncon * nworld], dtype=wp.int32, ndim=1)
 
   if support.is_sparse(mjm):
     qM = np.expand_dims(mjd.qM, axis=0)
@@ -242,6 +231,13 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nconmax: 
     mjd.moment_colind,
   )
 
+  # TODO(erikfrey): would it be better to tile on the gpu?
+  def tile(x):
+    return np.tile(x, (nworld,) + (1,) * len(np.array(x).shape))
+
+  d.time = wp.array(tile(mjd.time), dtype=wp.float32, ndim=1)
+  d.ncon = wp.array(tile(mjd.ncon), dtype=wp.int32, ndim=1)
+  d.ncon_total = wp.array([mjd.ncon * nworld], dtype=wp.int32, ndim=1)
   d.qpos = wp.array(tile(mjd.qpos), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile(mjd.qvel), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.array(tile(mjd.qfrc_applied), dtype=wp.float32, ndim=2)

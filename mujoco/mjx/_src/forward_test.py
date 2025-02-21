@@ -73,7 +73,7 @@ class ForwardTest(absltest.TestCase):
     _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, "qacc_smooth")
 
   def test_eulerdamp(self):
-    path = epath.resource_path("mujoco.mjx") / "test_data/pendula.xml"
+    path = epath.resource_path("mujoco.mjx") / "test_data/humanoid/humanoid.xml"
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     self.assertTrue((mjm.dof_damping > 0).any())
 

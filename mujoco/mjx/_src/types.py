@@ -45,6 +45,7 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
 
 vec10 = vec10f
 array2df = wp.array2d(dtype=wp.float32, ndim=2)
+array3df = wp.array3d(dtype=wp.float32, ndim=2)
 
 @wp.struct
 class Option:
@@ -117,7 +118,7 @@ class Model:
 @wp.struct
 class Contact:
    worldid: wp.array1d(dtype=int)
-   geom: wp.array1d(wp.vec2i)
+   geom: wp.array1d(dtype=wp.vec2i)
    efc_address: wp.array1d(dtype=int)
    dist: wp.array1d(dtype=float)
    pos: wp.array1d(dtype=wp.vec3)
