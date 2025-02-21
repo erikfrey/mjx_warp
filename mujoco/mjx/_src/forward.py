@@ -13,8 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Optional
-
 import warp as wp
 
 from . import math
@@ -33,7 +31,7 @@ def _advance(
   d: Data,
   act_dot: wp.array,
   qacc: wp.array,
-  qvel: Optional[wp.array] = None,
+  qvel: wp.array,
 ) -> Data:
   """Advance state and time given activation derivatives and acceleration."""
 
@@ -137,21 +135,23 @@ def _advance(
     else:  # if jnt_type in (JointType.HINGE, JointType.SLIDE):
       qpos[qpos_adr] = qpos[qpos_adr] + m.opt.timestep * qvel[dof_adr]
 
+  @wp.kernel
+  def advance_time(m: Model, d: Data):
+    worldid = wp.tid()
+    d.time[worldid] += m.opt.timestep
+
   # skip if no stateful actuators.
   if m.na:
     wp.launch(next_activation, dim=(d.nworld, m.nu), inputs=[m, d, act_dot])
 
   wp.launch(advance_velocities, dim=(d.nworld, m.nv), inputs=[m, d, qacc])
 
-  # advance positions with qvel if given, d.qvel otherwise (semi-implicit)
-  if qvel is not None:
-    qvel_in = qvel
-  else:
-    qvel_in = d.qvel
+  # advance positions with qvel (semi-implicit)
+  wp.launch(integrate_joint_positions, dim=(d.nworld, m.njnt), inputs=[m, d, qvel])
 
-  wp.launch(integrate_joint_positions, dim=(d.nworld, m.njnt), inputs=[m, d, qvel_in])
+  # advance time
+  wp.launch(advance_time, dim=(d.nworld,), inputs=[m, d])
 
-  d.time = d.time + m.opt.timestep
   return d
 
 
@@ -194,17 +194,17 @@ def euler(m: Model, d: Data) -> Data:
   if not m.opt.disableflags & MJ_DSBL_EULERDAMP:
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
-    smooth.solve_LD(
-      m,
-      d,
-      d.qLD_integration,
-      d.qLDiagInv_integration,
-      d.qacc_integration,
-      d.qfrc_integration,
-    )
-    return _advance(m, d, d.act_dot, d.qacc_integration)
+    # smooth.solve_LD(
+    #   m,
+    #   d,
+    #   d.qLD_integration,
+    #   d.qLDiagInv_integration,
+    #   d.qacc_integration,
+    #   d.qfrc_integration,
+    # )
+    return _advance(m, d, d.act_dot, d.qacc_integration, d.qvel)
 
-  return _advance(m, d, d.act_dot, d.qacc)
+  return _advance(m, d, d.act_dot, d.qacc, d.qvel)
 
 
 def fwd_position(m: Model, d: Data):

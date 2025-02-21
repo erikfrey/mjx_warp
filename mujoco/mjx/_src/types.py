@@ -15,7 +15,6 @@
 import warp as wp
 
 import mujoco
-from mujoco import mjx
 
 MJ_MINVAL = mujoco.mjMINVAL
 
@@ -37,14 +36,16 @@ MJ_DSBL_MIDPHASE = mujoco.mjtDisableBit.mjDSBL_MIDPHASE.value
 MJ_DSBL_EULERDAMP = mujoco.mjtDisableBit.mjDSBL_EULERDAMP.value
 
 
+class vec5f(wp.types.vector(length=5, dtype=wp.float32)):
+  pass
+
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
 
 
 vec10 = vec10f
-array2df = wp.array2d(dtype=wp.float32)
-array3df = wp.array3d(dtype=wp.float32)
-
+array2df = wp.array2d(dtype=wp.float32, ndim=2)
+array3df = wp.array3d(dtype=wp.float32, ndim=2)
 
 @wp.struct
 class Option:
@@ -66,6 +67,7 @@ class Model:
   nsite: int
   nmocap: int
   nM: int
+  nconmax: int
   opt: Option
   qpos0: wp.array(dtype=wp.float32, ndim=1)
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
@@ -114,9 +116,28 @@ class Model:
 
 
 @wp.struct
+class Contact:
+   worldid: wp.array1d(dtype=int)
+   geom: wp.array1d(dtype=wp.vec2i)
+   efc_address: wp.array1d(dtype=int)
+   dist: wp.array1d(dtype=float)
+   pos: wp.array1d(dtype=wp.vec3)
+   frame: wp.array1d(dtype=wp.mat33)
+   includemargin: wp.array1d(dtype=float)
+   friction: wp.array1d(dtype=vec5f)
+   solref: wp.array1d(dtype=wp.vec2)
+   solreffriction: wp.array1d(dtype=wp.vec2)
+   solimp: wp.array1d(dtype=vec5f)
+   dim: wp.array1d(dtype=int)
+
+
+@wp.struct
 class Data:
   nworld: int
-  time: float
+  nconmax: int
+  ncon: wp.array(dtype=wp.int32, ndim=1)
+  ncon_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  time: wp.array(dtype=wp.float32, ndim=1)
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
@@ -148,6 +169,7 @@ class Data:
   actuator_velocity: wp.array(dtype=wp.float32, ndim=2)
   cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
   cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
+  contact: Contact
   qfrc_bias: wp.array(dtype=wp.float32, ndim=2)
   qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
   qfrc_passive: wp.array(dtype=wp.float32, ndim=2)
