@@ -19,6 +19,11 @@ from . import types
 
 
 @wp.func
+def quat_inv(q: wp.quat) -> wp.quat:
+  return wp.quat(q[0], -q[1], -q[2], -q[3])
+
+
+@wp.func
 def mul_quat(u: wp.quat, v: wp.quat) -> wp.quat:
   return wp.quat(
     u[0] * v[0] - u[1] * v[1] - u[2] * v[2] - u[3] * v[3],
@@ -41,6 +46,18 @@ def axis_angle_to_quat(axis: wp.vec3, angle: wp.float32) -> wp.quat:
   s, c = wp.sin(angle * 0.5), wp.cos(angle * 0.5)
   axis = axis * s
   return wp.quat(c, axis[0], axis[1], axis[2])
+
+
+@wp.func
+def quat_to_axis_angle(q: wp.quat):
+  """Converts a quaternion into axis and angle."""
+  axis = wp.vec3(q[1], q[2], q[3])
+  sin_a_2 = wp.norm_l2(axis)
+  axis = wp.normalize(axis)
+  angle = 2.0 * wp.atan2(sin_a_2, q[0])
+  angle = wp.select(angle > wp.pi, angle, angle - 2.0 * wp.pi)
+
+  return axis, angle
 
 
 @wp.func
