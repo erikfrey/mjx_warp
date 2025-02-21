@@ -1,6 +1,24 @@
+# Copyright 2025 The Physics-Next Project Developers
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import warp as wp
 import mujoco
 import numpy as np
+import warp as wp
+
+import mujoco
 
 from . import support
 from . import types
@@ -10,6 +28,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m = types.Model()
   m.nq = mjm.nq
   m.nv = mjm.nv
+  m.na = mjm.na
   m.nu = mjm.nu
   m.nbody = mjm.nbody
   m.njnt = mjm.njnt
@@ -19,7 +38,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nM = mjm.nM
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
   m.opt.is_sparse = support.is_sparse(mjm)
- 
+  m.opt.timestep = mjm.opt.timestep
+  m.opt.disableflags = mjm.opt.disableflags
+
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
 
@@ -75,10 +96,12 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qLD_tilesize = np.array(sorted(tiles.keys()))
 
   m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
-  m.qLD_update_treeadr = wp.array(qLD_update_treeadr, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_update_treeadr = wp.array(
+    qLD_update_treeadr, dtype=wp.int32, ndim=1, device="cpu"
+  )
   m.qLD_tile = wp.array(qLD_tile, dtype=wp.int32, ndim=1)
-  m.qLD_tileadr = wp.array(qLD_tileadr, dtype=wp.int32, ndim=1, device='cpu')
-  m.qLD_tilesize = wp.array(qLD_tilesize, dtype=wp.int32, ndim=1, device='cpu')
+  m.qLD_tileadr = wp.array(qLD_tileadr, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_tilesize = wp.array(qLD_tilesize, dtype=wp.int32, ndim=1, device="cpu")
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
@@ -125,6 +148,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, nconmax: int = -1) -> types.
 
   d.ncon = wp.zeros((nworld,), dtype=wp.int32)
   d.ncon_total = wp.zeros((1,), dtype=wp.int32)
+  d.time = 0.0
 
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
@@ -155,6 +179,8 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, nconmax: int = -1) -> types.
   else:
     d.qM = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
     d.qLD = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
+  d.act_dot = wp.zeros((nworld, mjm.na), dtype=wp.float32)
+  d.act = wp.zeros((nworld, mjm.na), dtype=wp.float32)
   d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.actuator_velocity = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
   d.cvel = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
@@ -165,14 +191,23 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, nconmax: int = -1) -> types.
   d.qfrc_damper = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_actuator = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.contact = wp.zeros((nconmax,), dtype=types.Contact)
+
+  # internal tmp arrays
+  d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qM_integration = wp.zeros_like(d.qM)
+  d.qLD_integration = wp.zeros_like(d.qLD)
+  d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
 
   return d
 
 
 def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nconmax: int = -1) -> types.Data:
   d = types.Data()
+  d.nworld = nworld
+  d.time = mjd.time
 
   # TODO(erikfrey): would it be better to tile on the gpu?
   def tile(x):
@@ -199,7 +234,13 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nconmax: 
 
   # TODO(taylorhowell): sparse actuator_moment
   actuator_moment = np.zeros((mjm.nu, mjm.nv))
-  mujoco.mju_sparse2dense(actuator_moment, mjd.actuator_moment, mjd.moment_rownnz, mjd.moment_rowadr, mjd.moment_colind)
+  mujoco.mju_sparse2dense(
+    actuator_moment,
+    mjd.actuator_moment,
+    mjd.moment_rownnz,
+    mjd.moment_rowadr,
+    mjd.moment_colind,
+  )
 
   d.qpos = wp.array(tile(mjd.qpos), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile(mjd.qvel), dtype=wp.float32, ndim=2)
@@ -235,9 +276,16 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nconmax: 
   d.qfrc_damper = wp.array(tile(mjd.qfrc_damper), dtype=wp.float32, ndim=2)
   d.qfrc_actuator = wp.array(tile(mjd.qfrc_actuator), dtype=wp.float32, ndim=2)
   d.qfrc_smooth = wp.array(tile(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
+  d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
+  d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
+  d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
 
-  # TODO(team): properly tile contact
-  d.contact = wp.zeros((nconmax,), dtype=types.Contact)
+  # internal tmp arrays
+  d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qM_integration = wp.zeros_like(d.qM)
+  d.qLD_integration = wp.zeros_like(d.qLD)
+  d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
 
   return d

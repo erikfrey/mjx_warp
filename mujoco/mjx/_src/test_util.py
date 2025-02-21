@@ -1,4 +1,4 @@
-# Copyright 2023 DeepMind Technologies Limited
+# Copyright 2025 The Physics-Next Project Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,21 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Utilities for testing."""
 
 import time
 from typing import Callable, Tuple
 
 from etils import epath
-import mujoco
 import numpy as np
 import warp as wp
+
+import mujoco
 
 from . import io
 from . import types
 
+
 def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
-  path = epath.resource_path('mujoco.mjx') / 'test_data' / fname
+  path = epath.resource_path("mujoco.mjx") / "test_data" / fname
   mjm = mujoco.MjModel.from_xml_path(path.as_posix())
   mjd = mujoco.MjData(mjm)
   if keyframe > -1:

@@ -1,4 +1,4 @@
-# Copyright 2023 DeepMind Technologies Limited
+# Copyright 2025 The Physics-Next Project Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Run benchmarks on various devices."""
 
 import inspect
@@ -20,9 +21,10 @@ from typing import Sequence
 from absl import app
 from absl import flags
 from etils import epath
+import warp as wp
+
 import mujoco
 from mujoco import mjx
-import warp as wp
 
 _FUNCTION = flags.DEFINE_enum(
   "function",
