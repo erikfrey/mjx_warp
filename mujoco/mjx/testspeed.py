@@ -49,6 +49,9 @@ _LS_ITERATIONS = flags.DEFINE_integer(
 _IS_SPARSE = flags.DEFINE_bool(
   "is_sparse", True, "if model should create sparse mass matrices"
 )
+_NEFC_ACTIVE = flags.DEFINE_integer(
+  "nefc_active", 0, "total number of active efc for batch of environments"
+)
 _OUTPUT = flags.DEFINE_enum(
   "output", "text", ["text", "tsv"], "format to print results"
 )
@@ -84,6 +87,7 @@ def _main(argv: Sequence[str]):
     _SOLVER.value,
     _ITERATIONS.value,
     _LS_ITERATIONS.value,
+    _NEFC_ACTIVE.value,
   )
 
   name = argv[0]

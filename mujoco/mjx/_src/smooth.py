@@ -320,7 +320,7 @@ def _factor_i_dense(m: Model, d: Data, M: wp.array, L: wp.array):
   """Dense Cholesky factorizaton of inertia-like matrix M, assumed spd."""
 
   # TODO(team): develop heuristic for block dim, or make configurable
-  block_dim = 32
+  block_dim = 256
 
   def tile_cholesky(adr: int, size: int, tilesize: int):
     @wp.kernel
@@ -551,7 +551,7 @@ def _solve_LD_dense(m: Model, d: Data, L: array3df, x: array2df, y: array2df):
   """Computes dense backsubstitution: x = inv(L'*L)*y"""
 
   # TODO(team): develop heuristic for block dim, or make configurable
-  block_dim = 32
+  block_dim = 256
 
   def tile_cho_solve(adr: int, size: int, tilesize: int):
     @wp.kernel

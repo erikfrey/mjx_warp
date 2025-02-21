@@ -48,10 +48,21 @@ array3df = wp.array3d(dtype=wp.float32)
 
 @wp.struct
 class Option:
-  gravity: wp.vec3
-  is_sparse: bool  # warp only
   timestep: float
+  tolerance: float
+  ls_tolerance: float
+  gravity: wp.vec3
+  cone: int  # mjtCone
+  solver: int  # mjtSolver
+  iterations: int
+  ls_iterations: int
   disableflags: int
+  is_sparse: bool  # warp only
+
+
+@wp.struct
+class Statistic:
+  meaninertia: float
 
 
 @wp.struct
@@ -67,6 +78,7 @@ class Model:
   nmocap: int
   nM: int
   opt: Option
+  stat: Statistic
   qpos0: wp.array(dtype=wp.float32, ndim=1)
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
   body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
@@ -119,11 +131,11 @@ class Data:
   time: float
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
+  qacc_warmstart: wp.array(dtype=wp.float32, ndim=2)
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
   qacc: wp.array(dtype=wp.float32, ndim=2)
-  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
   xanchor: wp.array(dtype=wp.vec3, ndim=2)
   xaxis: wp.array(dtype=wp.vec3, ndim=2)
   xmat: wp.array(dtype=wp.mat33, ndim=2)
@@ -155,11 +167,19 @@ class Data:
   qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
-
-  # temp arrays
-  qfrc_integration: wp.array(dtype=wp.float32, ndim=2)
-  qacc_integration: wp.array(dtype=wp.float32, ndim=2)
-
-  qM_integration: wp.array(dtype=wp.float32, ndim=3)
-  qLD_integration: wp.array(dtype=wp.float32, ndim=3)
-  qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)
+  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
+  nefc_active: int  # warp only
+  nefc_maxbatch: int  # warp only
+  efc_J: wp.array(dtype=wp.float32, ndim=2)
+  efc_D: wp.array(dtype=wp.float32, ndim=1)
+  efc_aref: wp.array(dtype=wp.float32, ndim=1)
+  efc_force: wp.array(dtype=wp.float32, ndim=1)
+  efc_worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  world_efcadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  world_efcsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qfrc_integration: wp.array(dtype=wp.float32, ndim=2)  # warp only
+  qacc_integration: wp.array(dtype=wp.float32, ndim=2)  # warp only
+  qM_integration: wp.array(dtype=wp.float32, ndim=3)  # warp only
+  qLD_integration: wp.array(dtype=wp.float32, ndim=3)  # warp only
+  qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)  # warp only

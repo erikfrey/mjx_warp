@@ -50,14 +50,24 @@ def benchmark(
   nstep: int = 1000,
   batch_size: int = 1024,
   unroll_steps: int = 1,
-  solver: str = "newton",
+  solver: str = "cg",
   iterations: int = 1,
   ls_iterations: int = 4,
+  nefc_active: int = 0,
 ) -> Tuple[float, float, int]:
   """Benchmark a model."""
 
+  if solver == "cg":
+    m.opt.solver = mujoco.mjtSolver.mjSOL_CG
+  elif solver == "newton":
+    m.opt.solver = mujoco.mjtSolver.mjSOL_NEWTON
+
+  m.opt.iterations = iterations
+  m.opt.ls_iterations = ls_iterations
+
   mx = io.put_model(m)
-  dx = io.make_data(m, nworld=batch_size)
+  dx = io.make_data(m, nworld=batch_size, nefc_maxbatch=nefc_active)
+  dx.nefc_active = nefc_active
 
   wp.clear_kernel_cache()
   jit_beg = time.perf_counter()
