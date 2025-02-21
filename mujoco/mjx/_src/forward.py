@@ -295,7 +295,6 @@ def implicit(m: Model, d: Data) -> Data:
     wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
     qderiv_filled = True
 
-    #qderiv = d.actuator_moment.T @ jp.diag(vel) @ d.actuator_moment
     qderiv_actuator_moment(m, d, qderiv, vel)
 
   # qDeriv += d qfrc_passive / d qvel
@@ -310,6 +309,7 @@ def implicit(m: Model, d: Data) -> Data:
     add_qderiv_sum_qfrc(m, d, qderiv, m.opt.is_sparse)
     smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_LD(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qfrc_integration, d.qacc_integration)
+    smooth.solve_LD(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qacc_integration, d.qfrc_integration)
 
     return _advance(m, d, d.act_dot, d.qacc_integration)
 
