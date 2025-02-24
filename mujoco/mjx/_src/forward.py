@@ -240,7 +240,8 @@ def implicit(m: Model, d: Data) -> Data:
 
   def qderiv_actuator_moment(m: Model, d: Data, vel: array2df):
     block_dim = 32
-    tilesize = m.nu
+    tilesize_nu = m.nu
+    tilesize_nv = m.nv
 
     @wp.kernel
     def qderiv_actuator_moment_kernel(
@@ -248,11 +249,11 @@ def implicit(m: Model, d: Data) -> Data:
     ):
       worldid = wp.tid()
       actuator_moment_tile = wp.tile_load(
-        d.actuator_moment[worldid], shape=(tilesize, tilesize)
+        d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv)
       )
       actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
-      zeros = wp.tile_zeros(shape=(tilesize, tilesize), dtype=wp.float32)
-      vel_tile = wp.tile_load(vel[worldid], shape=(tilesize))
+      zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
+      vel_tile = wp.tile_load(vel[worldid], shape=(tilesize_nu))
       diag = wp.tile_diag_add(zeros, vel_tile)
       amTVel = wp.tile_matmul(actuator_moment_T, diag)
       qderiv_tile = wp.tile_matmul(amTVel, actuator_moment_tile)
