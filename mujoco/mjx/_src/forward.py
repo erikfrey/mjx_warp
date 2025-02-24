@@ -265,11 +265,6 @@ def implicit(m: Model, d: Data) -> Data:
       block_dim=block_dim,
     )
 
-  @wp.kernel
-  def qderiv_add_damping(m: Model, d: Data):
-    worldid, tid = wp.tid()
-    d.qM_integration[worldid, tid, tid] = d.qM_integration[worldid, tid, tid] - m.dof_damping[tid]
-
   def add_qderiv_sum_qfrc(m: Model, d: Data, is_sparse):
     @wp.kernel
     def add_qderiv_sum_qfrc_kernel_dense(m: Model, d: Data):
@@ -294,8 +289,10 @@ def implicit(m: Model, d: Data) -> Data:
       )
 
   def damping_tiled(m: Model, d: Data):
-    block_dim = 32
+    block_dim = 128
     tilesize = m.nv
+
+    actuation_disabled = m.opt.disableflags & DisableBit.ACTUATION.value
 
     @wp.func
     def neg(x: wp.float32):
@@ -304,7 +301,10 @@ def implicit(m: Model, d: Data) -> Data:
     @wp.kernel
     def add_damping(m: Model, d: Data, damping: wp.array(dtype=wp.float32)):
       worldid = wp.tid()
-      zeros = wp.tile_zeros(shape=(tilesize, tilesize), dtype=wp.float32)
+      if wp.static(actuation_disabled):
+        zeros = wp.tile_zeros(shape=(tilesize, tilesize), dtype=wp.float32)
+      else:
+        zeros = wp.tile_load(d.qM_integration[worldid], shape=(tilesize, tilesize))
       dof_damping = wp.tile_load(damping, shape=tilesize)
       negative = wp.tile_map(neg, dof_damping)
       damping_tile = wp.tile_diag_add(zeros, negative)
@@ -331,7 +331,7 @@ def implicit(m: Model, d: Data) -> Data:
     # qDeriv += d qfrc_passive / d qvel
     if not m.opt.disableflags & DisableBit.PASSIVE.value:
       # add damping to qderiv
-      wp.launch(qderiv_add_damping, dim=(d.nworld, m.nv), inputs=[m, d])
+      damping_tiled(m, d)
       # TODO: tendon
       # TODO: fluid drag, not supported in MJX right now
 
