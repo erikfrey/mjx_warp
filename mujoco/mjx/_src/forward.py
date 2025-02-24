@@ -264,7 +264,7 @@ def implicit(m: Model, d: Data) -> Data:
 
     @wp.kernel
     def qderiv_actuator_moment_kernel(
-      m: Model, d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
+      d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
     ):
       worldid = wp.tid()
 
@@ -300,34 +300,9 @@ def implicit(m: Model, d: Data) -> Data:
     wp.launch_tiled(
       qderiv_actuator_moment_kernel,
       dim=(d.nworld),
-      inputs=[m, d, vel, damping],
+      inputs=[d, vel, damping],
       block_dim=block_dim,
     )
-
-  def add_qderiv_sum_qfrc(m: Model, d: Data, is_sparse):
-    @wp.kernel
-    def add_qderiv_sum_qfrc_kernel_dense(m: Model, d: Data):
-      worldid, i, j = wp.tid()
-
-      d.qM_integration[worldid, i, j] = (
-        d.qM[worldid, i, j] - m.opt.timestep * d.qM_integration[worldid, i, j]
-      )
-
-      if i == 0:
-        d.qfrc_integration[worldid, j] = (
-          d.qfrc_smooth[worldid, j] + d.qfrc_constraint[worldid, j]
-        )
-
-    if is_sparse:
-      pass
-    else:
-      wp.launch(
-        add_qderiv_sum_qfrc_kernel_dense,
-        dim=(d.nworld, m.nv, m.nv),
-        inputs=[m, d],
-      )
-
-  
 
   # we reuse qM_integration to store qDeriv and then update in-place with qM
 
