@@ -293,6 +293,8 @@ def implicit(m: Model, d: Data) -> Data:
         inputs=[m, d, qderiv],
       )
 
+  assert not m.opt.is_sparse # unsupported
+
   # do we need this here?
   qderiv = wp.zeros(shape=(d.nworld, m.nv, m.nv), dtype=wp.float32)
   qderiv_filled = False
@@ -302,8 +304,6 @@ def implicit(m: Model, d: Data) -> Data:
     vel = wp.zeros(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
     wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
     qderiv_filled = True
-
-    print(qderiv)
 
     qderiv_actuator_moment(m, d, qderiv, vel)
 
