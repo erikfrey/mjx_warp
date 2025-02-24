@@ -146,6 +146,7 @@ class ForwardTest(absltest.TestCase):
     np.testing.assert_allclose(d.qvel.numpy()[0], 1 + mjm.opt.timestep)
 
   def test_implicit(self):
+    np.random.seed(0)
     mjm, mjd, m, d = self._load("pendula_implicit.xml", is_sparse=False)
 
     mjm.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
@@ -153,7 +154,7 @@ class ForwardTest(absltest.TestCase):
     mjd = mujoco.MjData(mjm)
     mjm.actuator_gainprm[:, 2] = np.random.normal(scale=10, size=mjm.actuator_gainprm[:, 2].shape)
     mujoco.mj_forward(mjm, mjd)
-    
+
     mjd.ctrl = np.random.normal(scale=10, size=mjd.ctrl.shape)
     mjd.act = np.random.normal(scale=10, size=mjd.act.shape)
 
