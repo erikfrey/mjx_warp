@@ -243,6 +243,18 @@ def implicit(m: Model, d: Data) -> Data:
     tilesize_nu = m.nu
     tilesize_nv = m.nv
 
+    @wp.func
+    def neg(x: wp.float32):
+      return -x
+    
+    @wp.func
+    def subtract_multiply(x: wp.float32, y: wp.float32):
+      return x - y * wp.static(m.opt.timestep)
+    
+    @wp.func
+    def add(x: wp.float32, y: wp.float32):
+      return x + y
+
     @wp.kernel
     def qderiv_actuator_moment_kernel(
       m: Model, d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
@@ -267,7 +279,15 @@ def implicit(m: Model, d: Data) -> Data:
         negative = wp.tile_map(neg, dof_damping)
         qderiv_tile = wp.tile_diag_add(qderiv_tile, negative)
 
+      # add to qM and also sum qfrc.
+      qM_tile = wp.tile_load(d.qM[worldid], shape=(tilesize_nv, tilesize_nv))
+      qderiv_tile = wp.tile_map(subtract_multiply, qM_tile, qderiv_tile)
       wp.tile_store(d.qM_integration[worldid], qderiv_tile)
+
+      qfrc_smooth_tile = wp.tile_load(d.qfrc_smooth[worldid], shape=tilesize_nv)
+      qfrc_constraint_tile = wp.tile_load(d.qfrc_constraint[worldid], shape=tilesize_nv)
+      qfrc_combined = wp.tile_map(add, qfrc_smooth_tile, qfrc_constraint_tile)
+      wp.tile_store(d.qfrc_integration[worldid], qfrc_combined)
 
     wp.launch_tiled(
       qderiv_actuator_moment_kernel,
@@ -299,9 +319,7 @@ def implicit(m: Model, d: Data) -> Data:
         inputs=[m, d],
       )
 
-  @wp.func
-  def neg(x: wp.float32):
-    return -x
+  
 
   assert not m.opt.is_sparse # unsupported
 
@@ -321,7 +339,7 @@ def implicit(m: Model, d: Data) -> Data:
     qderiv_actuator_moment(m, d, vel, m.dof_damping)
     
   if not m.opt.disableflags & DisableBit.ACTUATION.value or not m.opt.disableflags & DisableBit.PASSIVE.value:
-    add_qderiv_sum_qfrc(m, d, m.opt.is_sparse)
+    #add_qderiv_sum_qfrc(m, d, m.opt.is_sparse)
 
     smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_LD(
