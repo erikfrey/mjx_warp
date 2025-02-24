@@ -214,6 +214,24 @@ def euler(m: Model, d: Data) -> Data:
 def implicit(m: Model, d: Data) -> Data:
   """Integrates fully implicit in velocity."""
 
+  # optimization comments (AD)
+  # I went from small kernels for every step to a relatively big single
+  # kernel using tile API because it kept improving performance - 
+  # 30M to 50M FPS on an A6000.
+  # 
+  # The main benefit is reduced global memory roundtrips, but I assume
+  # there is also some benefit to loading data as early as possible.
+  #
+  # I further tried fusing in the cholesky factor/solve but the high
+  # storage requirements led to low occupancy and thus worse performance.
+  #
+  # The actuator_bias_gain_vel could theoretically be fused in as well, 
+  # but it's pretty clean straight-line code that loads a lot of data but
+  # only stores one array, so I think the benefit of keeping that one on-chip
+  # is likely not worth it compared to the compromises we're making with tile API.
+  # It would also need a different data layout for the biasprm/gainprm arrays
+  # to be tileable.
+
   # assumptions
   assert not m.opt.is_sparse # unsupported
 
@@ -308,9 +326,7 @@ def implicit(m: Model, d: Data) -> Data:
 
   if damping_enabled or actuation_enabled:
 
-    # qDeriv += d qfrc_actuator / d qvel
     if actuation_enabled:
-      #if not m.opt.disableflags & DisableBit.ACTUATION.value:
       vel = wp.zeros(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
       wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
 
