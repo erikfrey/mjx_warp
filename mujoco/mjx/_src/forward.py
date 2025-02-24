@@ -28,6 +28,8 @@ from .types import MJ_MINVAL
 from .types import DisableBit
 from .types import JointType
 from .types import DynType
+from .types import BiasType
+from .types import GainType
 
 
 def _advance(
@@ -223,28 +225,31 @@ def implicit(m: Model, d: Data) -> Data:
     actuator_gaintype = m.actuator_gaintype[actid]
     actuator_dyntype = m.actuator_dyntype[actid]
 
-    if actuator_biastype == MJ_BIASTYPE_AFFINE:
+    if actuator_biastype == wp.static(BiasType.AFFINE.value):
       bias_vel = m.actuator_biasprm[actid, 2]
 
-    if actuator_gaintype == MJ_GAINTYPE_AFFINE:
+    if actuator_gaintype == wp.static(GainType.AFFINE.value):
       gain_vel = m.actuator_gainprm[actid, 2]
 
     ctrl = d.ctrl[worldid, actid]
 
-    if actuator_dyntype != MJ_DYNTYPE_NONE:
+    if actuator_dyntype != wp.static(DynType.NONE.value):
       ctrl = d.act[worldid, actid]
 
     vel[worldid, actid] = bias_vel + gain_vel * ctrl
 
   def qderiv_actuator_moment(m: Model, d: Data, qderiv: array3df, vel: array2df):
-
     block_dim = 32
     tilesize = m.nu
 
     @wp.kernel
-    def qderiv_actuator_moment_kernel(m: Model, d: Data, qderiv: array3df, vel: array2df):
+    def qderiv_actuator_moment_kernel(
+      m: Model, d: Data, qderiv: array3df, vel: array2df
+    ):
       worldid = wp.tid()
-      actuator_moment_tile = wp.tile_load(d.actuator_moment[worldid], shape=(tilesize, tilesize))
+      actuator_moment_tile = wp.tile_load(
+        d.actuator_moment[worldid], shape=(tilesize, tilesize)
+      )
       actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
       zeros = wp.tile_zeros(shape=(tilesize, tilesize), dtype=wp.float32)
       vel_tile = wp.tile_load(vel[worldid], shape=(tilesize))
@@ -253,22 +258,26 @@ def implicit(m: Model, d: Data) -> Data:
       qderiv_tile = wp.tile_matmul(amTVel, actuator_moment_tile)
       wp.tile_store(qderiv[worldid], qderiv_tile)
 
-    wp.launch_tiled(qderiv_actuator_moment_kernel, dim=(d.nworld), inputs=[m, d, qderiv, vel], block_dim=block_dim)
+    wp.launch_tiled(
+      qderiv_actuator_moment_kernel,
+      dim=(d.nworld),
+      inputs=[m, d, qderiv, vel],
+      block_dim=block_dim,
+    )
 
   @wp.kernel
-  def qderiv_add_damping(
-    m: Model, d: Data, qderiv: array3df
-  ):
+  def qderiv_add_damping(m: Model, d: Data, qderiv: array3df):
     worldid, tid = wp.tid()
     qderiv[worldid, tid, tid] = qderiv[worldid, tid, tid] - m.dof_damping[tid]
 
   def add_qderiv_sum_qfrc(m: Model, d: Data, qderiv: array3df, is_sparse):
-
     @wp.kernel
     def add_qderiv_sum_qfrc_kernel_dense(m: Model, d: Data, qderiv: array3df):
       worldid, i, j = wp.tid()
 
-      d.qM_integration[worldid, i, j] = d.qM[worldid, i, j] - m.opt.timestep * qderiv[worldid, i, j]
+      d.qM_integration[worldid, i, j] = (
+        d.qM[worldid, i, j] - m.opt.timestep * qderiv[worldid, i, j]
+      )
 
       if i == 0:
         d.qfrc_integration[worldid, j] = (
@@ -278,15 +287,18 @@ def implicit(m: Model, d: Data) -> Data:
     if is_sparse:
       pass
     else:
-      wp.launch(add_qderiv_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d, qderiv])
-
+      wp.launch(
+        add_qderiv_sum_qfrc_kernel_dense,
+        dim=(d.nworld, m.nv, m.nv),
+        inputs=[m, d, qderiv],
+      )
 
   # do we need this here?
   qderiv = wp.zeros(shape=(d.nworld, m.nv, m.nv), dtype=wp.float32)
   qderiv_filled = False
 
   # qDeriv += d qfrc_actuator / d qvel
-  if not m.opt.disableflags & MJ_DSBL_ACTUATION:
+  if not m.opt.disableflags & DisableBit.ACTUATION.value:
     vel = wp.zeros(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
     wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
     qderiv_filled = True
@@ -294,7 +306,7 @@ def implicit(m: Model, d: Data) -> Data:
     qderiv_actuator_moment(m, d, qderiv, vel)
 
   # qDeriv += d qfrc_passive / d qvel
-  if not m.opt.disableflags & MJ_DSBL_PASSIVE:
+  if not m.opt.disableflags & DisableBit.PASSIVE.value:
     # add damping to qderiv
     wp.launch(qderiv_add_damping, dim=(d.nworld, m.nv), inputs=[m, d, qderiv])
     qderiv_filled = True
@@ -304,8 +316,22 @@ def implicit(m: Model, d: Data) -> Data:
   if qderiv_filled:
     add_qderiv_sum_qfrc(m, d, qderiv, m.opt.is_sparse)
     smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
-    smooth.solve_LD(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qfrc_integration, d.qacc_integration)
-    smooth.solve_LD(m, d, d.qLD_integration, d.qLDiagInv_integration, d.qacc_integration, d.qfrc_integration)
+    smooth.solve_LD(
+      m,
+      d,
+      d.qLD_integration,
+      d.qLDiagInv_integration,
+      d.qfrc_integration,
+      d.qacc_integration,
+    )
+    smooth.solve_LD(
+      m,
+      d,
+      d.qLD_integration,
+      d.qLDiagInv_integration,
+      d.qacc_integration,
+      d.qfrc_integration,
+    )
 
     return _advance(m, d, d.act_dot, d.qacc_integration)
 

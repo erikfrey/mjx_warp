@@ -88,6 +88,36 @@ class DynType(enum.IntEnum):
   # unsupported: USER
 
 
+class GainType(enum.IntEnum):
+  """Type of actuator gain.
+
+  Members:
+    FIXED: fixed gain
+    AFFINE: const + kp*length + kv*velocity
+    MUSCLE: muscle FLV curve computed by muscle_gain
+  """
+
+  FIXED = mujoco.mjtGain.mjGAIN_FIXED
+  AFFINE = mujoco.mjtGain.mjGAIN_AFFINE
+  MUSCLE = mujoco.mjtGain.mjGAIN_MUSCLE
+  # unsupported: USER
+
+
+class BiasType(enum.IntEnum):
+  """Type of actuator bias.
+
+  Members:
+    NONE: no bias
+    AFFINE: const + kp*length + kv*velocity
+    MUSCLE: muscle passive force computed by muscle_bias
+  """
+
+  NONE = mujoco.mjtBias.mjBIAS_NONE
+  AFFINE = mujoco.mjtBias.mjBIAS_AFFINE
+  MUSCLE = mujoco.mjtBias.mjBIAS_MUSCLE
+  # unsupported: USER
+
+
 class JointType(enum.IntEnum):
   """Type of degree of freedom.
 
