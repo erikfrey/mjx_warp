@@ -146,18 +146,20 @@ class ForwardTest(absltest.TestCase):
 
     np.testing.assert_allclose(d.qvel.numpy()[0], 1 + mjm.opt.timestep)
 
-class ImplicitIntegratorTest(parameterized.TestCase):
 
+class ImplicitIntegratorTest(parameterized.TestCase):
   def _load(self, fname: str, disableFlags: int):
     path = epath.resource_path("mujoco.mjx") / "test_data" / fname
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjm.opt.jacobian = False
     mjm.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
     mjm.opt.disableflags = mjm.opt.disableflags | disableFlags
-    mjm.actuator_gainprm[:, 2] = np.random.normal(scale=10, size=mjm.actuator_gainprm[:, 2].shape)
+    mjm.actuator_gainprm[:, 2] = np.random.normal(
+      scale=10, size=mjm.actuator_gainprm[:, 2].shape
+    )
 
     mjd = mujoco.MjData(mjm)
-    
+
     mujoco.mj_resetDataKeyframe(mjm, mjd, 1)  # reset to stand_on_left_leg
     mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
     mjd.ctrl = np.random.normal(scale=10, size=mjd.ctrl.shape)
@@ -170,7 +172,12 @@ class ImplicitIntegratorTest(parameterized.TestCase):
     d = mjx.put_data(mjm, mjd)
     return mjm, mjd, m, d
 
-  @parameterized.parameters(0, DisableBit.PASSIVE.value, DisableBit.ACTUATION.value, DisableBit.PASSIVE.value & DisableBit.ACTUATION.value)
+  @parameterized.parameters(
+    0,
+    DisableBit.PASSIVE.value,
+    DisableBit.ACTUATION.value,
+    DisableBit.PASSIVE.value & DisableBit.ACTUATION.value,
+  )
   def test_implicit(self, disableFlags):
     np.random.seed(0)
     mjm, mjd, m, d = self._load("pendula_implicit.xml", disableFlags)

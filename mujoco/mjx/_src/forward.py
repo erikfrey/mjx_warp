@@ -216,16 +216,16 @@ def implicit(m: Model, d: Data) -> Data:
 
   # optimization comments (AD)
   # I went from small kernels for every step to a relatively big single
-  # kernel using tile API because it kept improving performance - 
+  # kernel using tile API because it kept improving performance -
   # 30M to 50M FPS on an A6000.
-  # 
+  #
   # The main benefit is reduced global memory roundtrips, but I assume
   # there is also some benefit to loading data as early as possible.
   #
   # I further tried fusing in the cholesky factor/solve but the high
   # storage requirements led to low occupancy and thus worse performance.
   #
-  # The actuator_bias_gain_vel could theoretically be fused in as well, 
+  # The actuator_bias_gain_vel could theoretically be fused in as well,
   # but it's pretty clean straight-line code that loads a lot of data but
   # only stores one array, so I think the benefit of keeping that one on-chip
   # is likely not worth it compared to the compromises we're making with tile API.
@@ -233,7 +233,7 @@ def implicit(m: Model, d: Data) -> Data:
   # to be tileable.
 
   # assumptions
-  assert not m.opt.is_sparse # unsupported
+  assert not m.opt.is_sparse  # unsupported
 
   # compile-time constants
   damping_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
@@ -263,7 +263,9 @@ def implicit(m: Model, d: Data) -> Data:
 
     vel[worldid, actid] = bias_vel + gain_vel * ctrl
 
-  def qderiv_actuator_moment(m: Model, d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)):
+  def qderiv_actuator_moment(
+    m: Model, d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
+  ):
     block_dim = 64
     tilesize_nu = m.nu
     tilesize_nv = m.nv
@@ -271,11 +273,11 @@ def implicit(m: Model, d: Data) -> Data:
     @wp.func
     def neg(x: wp.float32):
       return -x
-    
+
     @wp.func
     def subtract_multiply(x: wp.float32, y: wp.float32):
       return x - y * wp.static(m.opt.timestep)
-    
+
     @wp.func
     def add(x: wp.float32, y: wp.float32):
       return x + y
@@ -290,7 +292,7 @@ def implicit(m: Model, d: Data) -> Data:
         actuator_moment_tile = wp.tile_load(
           d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv)
         )
-        
+
         zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
         vel_tile = wp.tile_load(vel[worldid], shape=(tilesize_nu))
         diag = wp.tile_diag_add(zeros, vel_tile)
@@ -323,16 +325,16 @@ def implicit(m: Model, d: Data) -> Data:
     )
 
   # we reuse qM_integration to store qDeriv and then update in-place with qM
-
   if damping_enabled or actuation_enabled:
-
     if actuation_enabled:
       vel = wp.empty(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
       wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
 
     qderiv_actuator_moment(m, d, vel, m.dof_damping)
 
-    smooth._factor_solve_i_dense(m, d, d.qM_integration, d.qacc_integration, d.qfrc_integration)
+    smooth._factor_solve_i_dense(
+      m, d, d.qM_integration, d.qacc_integration, d.qfrc_integration
+    )
 
     return _advance(m, d, d.act_dot, d.qacc_integration)
 
