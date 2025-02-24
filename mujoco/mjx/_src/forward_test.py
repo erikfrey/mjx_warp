@@ -20,6 +20,8 @@ from etils import epath
 import numpy as np
 import warp as wp
 
+wp.config.verify_cuda = True
+
 import mujoco
 from mujoco import mjx
 
@@ -42,6 +44,8 @@ class ForwardTest(absltest.TestCase):
     mjd = mujoco.MjData(mjm)
     mujoco.mj_resetDataKeyframe(mjm, mjd, 1)  # reset to stand_on_left_leg
     mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
+    mjd.ctrl = np.random.normal(scale=10, size=mjd.ctrl.shape)
+    mjd.act = np.random.normal(scale=10, size=mjd.act.shape)
     mujoco.mj_forward(mjm, mjd)
     m = mjx.put_model(mjm)
     d = mjx.put_data(mjm, mjd)
@@ -58,6 +62,21 @@ class ForwardTest(absltest.TestCase):
       d.actuator_velocity.numpy()[0], mjd.actuator_velocity, "actuator_velocity"
     )
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, "qfrc_bias")
+
+  def test_fwd_actuation(self):
+    """Tests MJX fwd_actuation."""
+    mjm, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
+
+    mujoco.mj_fwdActuation(mjm, mjd)
+
+    for arr in (d.actuator_force, d.qfrc_actuator):
+      arr.zero_()
+
+    mjx.fwd_actuation(m, d)
+
+    _assert_eq(d.ctrl.numpy()[0], mjd.ctrl, "ctrl")
+    _assert_eq(d.actuator_force.numpy()[0], mjd.actuator_force, "actuator_force")
+    _assert_eq(d.qfrc_actuator.numpy()[0], mjd.qfrc_actuator, "qfrc_actuator")
 
   def test_fwd_acceleration(self):
     """Tests MJX fwd_acceleration."""

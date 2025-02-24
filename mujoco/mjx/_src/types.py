@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 import warp as wp
+import enum
+import mujoco
 
 import mujoco
 from mujoco import mjx
@@ -75,6 +77,43 @@ class Option:
   disableflags: int
 
 
+class TrnType(enum.IntEnum):
+  """Type of actuator transmission.
+
+  Members:
+    JOINT: force on joint
+    JOINTINPARENT: force on joint, expressed in parent frame
+    TENDON: force on tendon (unsupported)
+    SITE: force on site (unsupported)
+  """
+
+  JOINT = mujoco.mjtTrn.mjTRN_JOINT
+  JOINTINPARENT = mujoco.mjtTrn.mjTRN_JOINTINPARENT
+  # unsupported: SITE, TENDON, SLIDERCRANK, BODY
+
+
+class JointType(enum.IntEnum):
+  """Type of degree of freedom.
+
+  Members:
+    FREE:  global position and orientation (quat)       (7,)
+    BALL:  orientation (quat) relative to parent        (4,)
+    SLIDE: sliding distance along body-fixed axis       (1,)
+    HINGE: rotation angle (rad) around body-fixed axis  (1,)
+  """
+
+  FREE = mujoco.mjtJoint.mjJNT_FREE
+  BALL = mujoco.mjtJoint.mjJNT_BALL
+  SLIDE = mujoco.mjtJoint.mjJNT_SLIDE
+  HINGE = mujoco.mjtJoint.mjJNT_HINGE
+
+  def dof_width(self) -> int:
+    return {0: 6, 1: 3, 2: 1, 3: 1}[self.value]
+
+  def qpos_width(self) -> int:
+    return {0: 7, 1: 4, 2: 1, 3: 1}[self.value]
+
+
 @wp.struct
 class Model:
   nq: int
@@ -105,6 +144,7 @@ class Model:
   body_jntnum: wp.array(dtype=wp.int32, ndim=1)
   body_parentid: wp.array(dtype=wp.int32, ndim=1)
   body_mocapid: wp.array(dtype=wp.int32, ndim=1)
+  body_weldid: wp.array(dtype=wp.int32, ndim=1)
   body_pos: wp.array(dtype=wp.vec3, ndim=1)
   body_quat: wp.array(dtype=wp.quat, ndim=1)
   body_ipos: wp.array(dtype=wp.vec3, ndim=1)
@@ -119,25 +159,35 @@ class Model:
   jnt_axis: wp.array(dtype=wp.vec3, ndim=1)
   jnt_pos: wp.array(dtype=wp.vec3, ndim=1)
   jnt_stiffness: wp.array(dtype=wp.float32, ndim=1)
+  jnt_actfrclimited: wp.array(dtype=wp.bool, ndim=1)
+  jnt_actfrcrange: wp.array(dtype=wp.vec2, ndim=1)
   geom_pos: wp.array(dtype=wp.vec3, ndim=1)
   geom_quat: wp.array(dtype=wp.quat, ndim=1)
   site_pos: wp.array(dtype=wp.vec3, ndim=1)
   site_quat: wp.array(dtype=wp.quat, ndim=1)
+  site_bodyid: wp.array(dtype=wp.int32, ndim=1)
   dof_bodyid: wp.array(dtype=wp.int32, ndim=1)
   dof_jntid: wp.array(dtype=wp.int32, ndim=1)
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
-  actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
-  actuator_actrange: wp.array(dtype=wp.float32, ndim=2)
-  actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
-  actuator_biastype: wp.array(dtype=wp.int32, ndim=1)
-  actuator_biasprm: wp.array(dtype=wp.float32, ndim=2)
-  actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
-  actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
+  actuator_trntype: wp.array(dtype=wp.int32, ndim=1)
+  actuator_trnid: wp.array(dtype=wp.int32, ndim=2)
+  actuator_ctrllimited: wp.array(dtype=wp.bool, ndim=1)
+  actuator_ctrlrange: wp.array(dtype=wp.vec2, ndim=1)
+  actuator_forcelimited: wp.array(dtype=wp.bool, ndim=1)
+  actuator_forcerange: wp.array(dtype=wp.vec2, ndim=1)
   actuator_gaintype: wp.array(dtype=wp.int32, ndim=1)
   actuator_gainprm: wp.array(dtype=wp.float32, ndim=2)
+  actuator_biasprm: wp.array(dtype=wp.float32, ndim=2)
+  actuator_gear: wp.array(dtype=wp.spatial_vector, ndim=1)
+  actuator_actlimited: wp.array(dtype=wp.bool, ndim=1)
+  actuator_actrange: wp.array(dtype=wp.vec2, ndim=1)
+  actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
+  actuator_biastype: wp.array(dtype=wp.int32, ndim=1)
+  actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
+  actuator_dynprm: wp.array(dtype=vec10f, ndim=1)
 
 
 @wp.struct
@@ -146,6 +196,7 @@ class Data:
   time: float
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
+  ctrl: wp.array(dtype=wp.float32, ndim=2)
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
@@ -165,7 +216,6 @@ class Data:
   site_xmat: wp.array(dtype=wp.mat33, ndim=2)
   cinert: wp.array(dtype=vec10, ndim=2)
   cdof: wp.array(dtype=wp.spatial_vector, ndim=2)
-  actuator_moment: wp.array(dtype=wp.float32, ndim=3)
   crb: wp.array(dtype=vec10, ndim=2)
   qM: wp.array(dtype=wp.float32, ndim=3)
   qLD: wp.array(dtype=wp.float32, ndim=3)
@@ -173,6 +223,9 @@ class Data:
   act_dot: wp.array(dtype=wp.float32, ndim=2)
   qLDiagInv: wp.array(dtype=wp.float32, ndim=2)
   actuator_velocity: wp.array(dtype=wp.float32, ndim=2)
+  actuator_force: wp.array(dtype=wp.float32, ndim=2)
+  actuator_length: wp.array(dtype=wp.float32, ndim=2)
+  actuator_moment: wp.array(dtype=wp.float32, ndim=3)
   cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
   cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
   qfrc_bias: wp.array(dtype=wp.float32, ndim=2)

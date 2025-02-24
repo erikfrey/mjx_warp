@@ -21,8 +21,7 @@ from . import math
 from . import passive
 from . import smooth
 
-from .types import array2df
-from .types import array3df
+from .types import array2df, array3df
 from .types import Model
 from .types import Data
 from .types import MJ_MINVAL
@@ -55,8 +54,8 @@ def _advance(
 
     # get the high/low range for each actuator state
     limited = m.actuator_actlimited[actid]
-    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[actid, 0])
-    range_high = wp.select(limited, wp.inf, m.actuator_actrange[actid, 1])
+    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[actid][0])
+    range_high = wp.select(limited, wp.inf, m.actuator_actrange[actid][1])
 
     # get the actual actuation - skip if -1 (means stateless actuator)
     act_adr = m.actuator_actadr[actid]
@@ -71,7 +70,7 @@ def _advance(
 
     # check dynType
     dyn_type = m.actuator_dyntype[actid]
-    dyn_prm = m.actuator_dynprm[actid, 0]
+    dyn_prm = m.actuator_dynprm[actid][0]
 
     # advance the actuation
     if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
@@ -327,13 +326,15 @@ def fwd_position(m: Model, d: Data):
   smooth.factor_m(m, d)
   # TODO(team): collision_driver.collision
   # TODO(team): constraint.make_constraint
-  # TODO(team): smooth.transmission
+  smooth.transmission(m, d)
 
 
 def fwd_velocity(m: Model, d: Data):
   """Velocity-dependent computations."""
 
   # TODO(team): tile operations?
+  d.actuator_velocity.zero_()
+
   @wp.kernel
   def _actuator_velocity(d: Data):
     worldid, actid, dofid = wp.tid()
@@ -346,6 +347,64 @@ def fwd_velocity(m: Model, d: Data):
   smooth.com_vel(m, d)
   passive.passive(m, d)
   smooth.rne(m, d)
+
+
+def fwd_actuation(m: Model, d: Data):
+  """Actuation-dependent computations."""
+  if not m.nu:
+    return
+
+  # TODO support stateful actuators
+
+  @wp.kernel
+  def _force(
+    m: Model,
+    ctrl: array2df,
+    # outputs
+    force: array2df,
+  ):
+    worldid, dofid = wp.tid()
+    gain = m.actuator_gainprm[dofid, 0]
+    bias = m.actuator_biasprm[dofid, 0]
+    # TODO support gain types other than FIXED
+    c = ctrl[worldid, dofid]
+    if m.actuator_ctrllimited[dofid]:
+      r = m.actuator_ctrlrange[dofid]
+      c = wp.clamp(c, r[0], r[1])
+    f = gain * c + bias
+    if m.actuator_forcelimited[dofid]:
+      r = m.actuator_forcerange[dofid]
+      f = wp.clamp(f, r[0], r[1])
+    force[worldid, dofid] = f
+
+  wp.launch(
+    _force, dim=[d.nworld, m.nu], inputs=[m, d.ctrl], outputs=[d.actuator_force]
+  )
+
+  @wp.kernel
+  def _qfrc(m: Model, moment: array3df, force: array2df, qfrc: array2df):
+    worldid, vid = wp.tid()
+
+    s = float(0.0)
+    for uid in range(m.nu):
+      # TODO consider using Tile API or transpose moment for better access pattern
+      s += moment[worldid, uid, vid] * force[worldid, uid]
+    jntid = m.dof_jntid[vid]
+    if m.jnt_actfrclimited[jntid]:
+      r = m.jnt_actfrcrange[jntid]
+      s = wp.clamp(s, r[0], r[1])
+    qfrc[worldid, vid] = s
+
+  wp.launch(
+    _qfrc,
+    dim=(d.nworld, m.nv),
+    inputs=[m, d.actuator_moment, d.actuator_force],
+    outputs=[d.qfrc_actuator],
+  )
+
+  # TODO actuator-level gravity compensation, skip if added as passive force
+
+  return d
 
 
 def fwd_acceleration(m: Model, d: Data):
@@ -374,9 +433,9 @@ def forward(m: Model, d: Data):
 
   fwd_position(m, d)
   # TODO(team): sensor.sensor_pos
-  # TODO(taylorhowell): fwd_velocity
+  fwd_velocity(m, d)
   # TODO(team): sensor.sensor_vel
-  # TODO(team): fwd_actuation
+  fwd_actuation(m, d)
   fwd_acceleration(m, d)
   # TODO(team): sensor.sensor_acc
 

@@ -1,6 +1,7 @@
 # Exclude temporary folders
 *.egg-info/
 env/
+.history
 
 # Python byte-compiled / optimized / DLL files
 __pycache__/

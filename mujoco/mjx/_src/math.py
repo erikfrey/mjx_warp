@@ -63,6 +63,11 @@ def quat_to_mat(quat: wp.quat) -> wp.mat33:
 
 
 @wp.func
+def quat_inv(quat: wp.quat) -> wp.quat:
+  return wp.quat(quat[0], -quat[1], -quat[2], -quat[3])
+
+
+@wp.func
 def inert_vec(i: types.vec10, v: wp.spatial_vector) -> wp.spatial_vector:
   """mju_mulInertVec: multiply 6D vector (rotation, translation) by 6D inertia matrix."""
   return wp.spatial_vector(

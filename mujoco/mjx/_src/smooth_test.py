@@ -21,8 +21,7 @@ import numpy as np
 import mujoco
 from mujoco import mjx
 
-import mujoco
-from mujoco import mjx
+wp.config.verify_cuda = True
 
 from . import test_util
 
@@ -139,6 +138,26 @@ class SmoothTest(parameterized.TestCase):
     mjx.com_vel(m, d)
     _assert_eq(d.cvel.numpy()[0], mjd.cvel, "cvel")
     _assert_eq(d.cdof_dot.numpy()[0], mjd.cdof_dot, "cdof_dot")
+
+  def test_transmission(self):
+    """Tests transmission."""
+    mjm, mjd, m, d = test_util.fixture("pendula.xml")
+
+    for arr in (d.actuator_length, d.actuator_moment):
+      arr.zero_()
+
+    actuator_moment = np.zeros((mjm.nu, mjm.nv))
+    mujoco.mju_sparse2dense(
+      actuator_moment,
+      mjd.actuator_moment,
+      mjd.moment_rownnz,
+      mjd.moment_rowadr,
+      mjd.moment_colind,
+    )
+
+    mjx._src.smooth.transmission(m, d)
+    _assert_eq(d.actuator_length.numpy()[0], mjd.actuator_length, "actuator_length")
+    _assert_eq(d.actuator_moment.numpy()[0], actuator_moment, "actuator_moment")
 
 
 if __name__ == "__main__":
