@@ -214,6 +214,13 @@ def euler(m: Model, d: Data) -> Data:
 def implicit(m: Model, d: Data) -> Data:
   """Integrates fully implicit in velocity."""
 
+  # assumptions
+  assert not m.opt.is_sparse # unsupported
+
+  # compile-time constants
+  damping_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
+  actuation_enabled = not m.opt.disableflags & DisableBit.ACTUATION.value
+
   @wp.kernel
   def actuator_bias_gain_vel(m: Model, d: Data, vel: array2df):
     worldid, actid = wp.tid()
@@ -239,7 +246,7 @@ def implicit(m: Model, d: Data) -> Data:
     vel[worldid, actid] = bias_vel + gain_vel * ctrl
 
   def qderiv_actuator_moment(m: Model, d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)):
-    block_dim = 32
+    block_dim = 64
     tilesize_nu = m.nu
     tilesize_nv = m.nv
 
@@ -265,10 +272,11 @@ def implicit(m: Model, d: Data) -> Data:
         actuator_moment_tile = wp.tile_load(
           d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv)
         )
-        actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
+        
         zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
         vel_tile = wp.tile_load(vel[worldid], shape=(tilesize_nu))
         diag = wp.tile_diag_add(zeros, vel_tile)
+        actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
         amTVel = wp.tile_matmul(actuator_moment_T, diag)
         qderiv_tile = wp.tile_matmul(amTVel, actuator_moment_tile)
       else:
@@ -321,12 +329,7 @@ def implicit(m: Model, d: Data) -> Data:
 
   
 
-  assert not m.opt.is_sparse # unsupported
-
   # we reuse qM_integration to store qDeriv and then update in-place with qM
-
-  damping_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
-  actuation_enabled = not m.opt.disableflags & DisableBit.ACTUATION.value
 
   if damping_enabled or actuation_enabled:
 
@@ -337,9 +340,6 @@ def implicit(m: Model, d: Data) -> Data:
       wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
 
     qderiv_actuator_moment(m, d, vel, m.dof_damping)
-    
-  if not m.opt.disableflags & DisableBit.ACTUATION.value or not m.opt.disableflags & DisableBit.PASSIVE.value:
-    #add_qderiv_sum_qfrc(m, d, m.opt.is_sparse)
 
     smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_LD(
