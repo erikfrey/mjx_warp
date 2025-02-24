@@ -338,10 +338,7 @@ def implicit(m: Model, d: Data) -> Data:
 
       qderiv_actuator_moment(m, d, vel, m.dof_damping)
 
-    # qDeriv += d qfrc_passive / d qvel
-    #if not m.opt.disableflags & DisableBit.PASSIVE.value:
-      # add damping to qderiv
-      #damping_tiled(m, d)
+      # dof_damping added directly in qderiv kernel.
       # TODO: tendon
       # TODO: fluid drag, not supported in MJX right now
 
