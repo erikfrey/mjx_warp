@@ -327,20 +327,12 @@ def implicit(m: Model, d: Data) -> Data:
   if damping_enabled or actuation_enabled:
 
     if actuation_enabled:
-      vel = wp.zeros(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
+      vel = wp.empty(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
       wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
 
     qderiv_actuator_moment(m, d, vel, m.dof_damping)
 
-    smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
-    smooth.solve_LD(
-      m,
-      d,
-      d.qLD_integration,
-      d.qLDiagInv_integration,
-      d.qacc_integration,
-      d.qfrc_integration,
-    )
+    smooth._factor_solve_i_dense(m, d, d.qM_integration, d.qacc_integration, d.qfrc_integration)
 
     return _advance(m, d, d.act_dot, d.qacc_integration)
 

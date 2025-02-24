@@ -658,3 +658,31 @@ def solve_LD(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2
 def solve_m(m: Model, d: Data, x: array2df, y: array2df):
   """Computes backsubstitution: x = qLD * y."""
   solve_LD(m, d, d.qLD, d.qLDiagInv, x, y)
+
+def _factor_solve_i_dense(m: Model, d: Data, M: array3df, x: array2df, y: array2df):
+  # TODO(team): develop heuristic for block dim, or make configurable
+  block_dim = 32
+  tilesize = m.nv
+
+  @wp.kernel
+  def cholesky(M: array3df, x: array2df, y:array2df):
+    worldid = wp.tid()
+    M_tile = wp.tile_load(
+      M[worldid], shape=(tilesize, tilesize)
+    )
+    y_slice = wp.tile_load(y[worldid], shape=(tilesize,))
+
+    L_tile = wp.tile_cholesky(M_tile)
+    x_slice = wp.tile_cholesky_solve(L_tile, y_slice)
+    wp.tile_store(x[worldid], x_slice)
+
+  wp.launch_tiled(
+    cholesky, dim=(d.nworld), inputs=[M, x, y], block_dim=block_dim
+  )
+
+def factor_solve_i(m, d, M, L, D, x, y):
+  if m.opt.is_spare:
+    _factor_i_sparse(m, d, M, L, D)
+    _solve_LD_sparse(m, d, L, D, x, y)
+  else:
+    _factor_solve_i_dense(m, d, M, x, y)
