@@ -248,15 +248,19 @@ def implicit(m: Model, d: Data) -> Data:
       m: Model, d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
     ):
       worldid = wp.tid()
-      actuator_moment_tile = wp.tile_load(
-        d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv)
-      )
-      actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
-      zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
-      vel_tile = wp.tile_load(vel[worldid], shape=(tilesize_nu))
-      diag = wp.tile_diag_add(zeros, vel_tile)
-      amTVel = wp.tile_matmul(actuator_moment_T, diag)
-      qderiv_tile = wp.tile_matmul(amTVel, actuator_moment_tile)
+
+      if wp.static(actuation_enabled):
+        actuator_moment_tile = wp.tile_load(
+          d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv)
+        )
+        actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
+        zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
+        vel_tile = wp.tile_load(vel[worldid], shape=(tilesize_nu))
+        diag = wp.tile_diag_add(zeros, vel_tile)
+        amTVel = wp.tile_matmul(actuator_moment_T, diag)
+        qderiv_tile = wp.tile_matmul(amTVel, actuator_moment_tile)
+      else:
+        qderiv_tile = wp.tile_zeros(shape=(tilesize_nv, tilesize_nv), dtype=wp.float32)
 
       if wp.static(damping_enabled):
         dof_damping = wp.tile_load(damping, shape=tilesize_nv)
@@ -294,33 +298,10 @@ def implicit(m: Model, d: Data) -> Data:
         dim=(d.nworld, m.nv, m.nv),
         inputs=[m, d],
       )
-  
-  tilesize = m.nv
-  actuation_disabled = m.opt.disableflags & DisableBit.ACTUATION.value
 
   @wp.func
   def neg(x: wp.float32):
     return -x
-    
-  @wp.func 
-  def add_damping(d: Data, damping: wp.array(dtype=wp.float32), worldid: int):
-    if wp.static(actuation_disabled):
-      zeros = wp.tile_zeros(shape=(tilesize, tilesize), dtype=wp.float32)
-    else:
-      zeros = wp.tile_load(d.qM_integration[worldid], shape=(tilesize, tilesize))
-    dof_damping = wp.tile_load(damping, shape=tilesize)
-    negative = wp.tile_map(neg, dof_damping)
-    damping_tile = wp.tile_diag_add(zeros, negative)
-    wp.tile_store(d.qM_integration[worldid], damping_tile)
-
-  def damping_tiled(m: Model, d: Data):
-
-    @wp.kernel
-    def add_damping_kernel(d: Data, damping: wp.array(dtype=wp.float32)):
-      worldid = wp.tid()
-      add_damping(d, damping, worldid)
-
-    wp.launch_tiled(add_damping_kernel, dim=(d.nworld), inputs=[d, m.dof_damping], block_dim=128)
 
   assert not m.opt.is_sparse # unsupported
 
@@ -329,21 +310,15 @@ def implicit(m: Model, d: Data) -> Data:
   damping_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
   actuation_enabled = not m.opt.disableflags & DisableBit.ACTUATION.value
 
-  if damping_enabled and actuation_enabled:
+  if damping_enabled or actuation_enabled:
 
     # qDeriv += d qfrc_actuator / d qvel
-    if not m.opt.disableflags & DisableBit.ACTUATION.value:
+    if actuation_enabled:
+      #if not m.opt.disableflags & DisableBit.ACTUATION.value:
       vel = wp.zeros(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
       wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
 
-      qderiv_actuator_moment(m, d, vel, m.dof_damping)
-
-      # dof_damping added directly in qderiv kernel.
-      # TODO: tendon
-      # TODO: fluid drag, not supported in MJX right now
-
-  elif damping_enabled and not actuation_enabled:
-      damping_tiled(m, d)
+    qderiv_actuator_moment(m, d, vel, m.dof_damping)
     
   if not m.opt.disableflags & DisableBit.ACTUATION.value or not m.opt.disableflags & DisableBit.PASSIVE.value:
     add_qderiv_sum_qfrc(m, d, m.opt.is_sparse)
