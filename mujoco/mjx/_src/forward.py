@@ -25,12 +25,9 @@ from .types import array2df, array3df
 from .types import Model
 from .types import Data
 from .types import MJ_MINVAL
-from .types import MJ_DSBL_EULERDAMP
-from .types import MJ_DSBL_ACTUATION
-from .types import MJ_DSBL_PASSIVE
-from .types import MJ_BIASTYPE_AFFINE
-from .types import MJ_GAINTYPE_AFFINE
-from .types import MJ_DYNTYPE_NONE
+from .types import DisableBit
+from .types import JointType
+from .types import DynType
 
 
 def _advance(
@@ -73,7 +70,7 @@ def _advance(
     dyn_prm = m.actuator_dynprm[actid][0]
 
     # advance the actuation
-    if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
+    if dyn_type == wp.static(DynType.FILTEREXACT.value):
       tau = wp.select(dyn_prm < MJ_MINVAL, dyn_prm, MJ_MINVAL)
       act = act + act_dot * tau * (1.0 - wp.exp(-m.opt.timestep / tau))
     else:
@@ -99,7 +96,7 @@ def _advance(
     qpos = d.qpos[worldId]
     qvel = qvel_in[worldId]
 
-    if jnt_type == 0:  # free joint
+    if jnt_type == wp.static(JointType.FREE.value):
       qpos_pos = wp.vec3(qpos[qpos_adr], qpos[qpos_adr + 1], qpos[qpos_adr + 2])
       qvel_lin = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
@@ -123,7 +120,7 @@ def _advance(
       qpos[qpos_adr + 5] = qpos_quat_new[2]
       qpos[qpos_adr + 6] = qpos_quat_new[3]
 
-    elif jnt_type == 1:  # ball joint
+    elif jnt_type == wp.static(JointType.BALL.value):  # ball joint
       qpos_quat = wp.quat(
         qpos[qpos_adr],
         qpos[qpos_adr + 1],
@@ -196,7 +193,7 @@ def euler(m: Model, d: Data) -> Data:
         add_damping_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d]
       )
 
-  if not m.opt.disableflags & MJ_DSBL_EULERDAMP:
+  if not m.opt.disableflags & DisableBit.EULERDAMP.value:
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_LD(

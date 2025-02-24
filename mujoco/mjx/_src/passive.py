@@ -3,6 +3,7 @@ import warp as wp
 from . import math
 from .types import Model
 from .types import Data
+from .types import JointType
 
 
 def passive(m: Model, d: Data):
@@ -20,7 +21,7 @@ def passive(m: Model, d: Data):
     jnt_type = m.jnt_type[jntid]
     qposid = m.jnt_qposadr[jntid]
 
-    if jnt_type == 0:  # mjJNT_FREE
+    if jnt_type == wp.static(JointType.FREE.value):
       dif = wp.vec3(
         d.qpos[worldid, qposid + 0] - m.qpos_spring[qposid + 0],
         d.qpos[worldid, qposid + 1] - m.qpos_spring[qposid + 1],
@@ -45,7 +46,7 @@ def passive(m: Model, d: Data):
       d.qfrc_spring[worldid, dofid + 3] = -stiffness * dif[0]
       d.qfrc_spring[worldid, dofid + 4] = -stiffness * dif[1]
       d.qfrc_spring[worldid, dofid + 5] = -stiffness * dif[2]
-    elif jnt_type == 1:  # mjJNT_BALL
+    elif jnt_type == wp.static(JointType.BALL.value):
       rot = wp.quat(
         d.qpos[worldid, qposid + 0],
         d.qpos[worldid, qposid + 1],
@@ -62,7 +63,7 @@ def passive(m: Model, d: Data):
       d.qfrc_spring[worldid, dofid + 0] = -stiffness * dif[0]
       d.qfrc_spring[worldid, dofid + 1] = -stiffness * dif[1]
       d.qfrc_spring[worldid, dofid + 2] = -stiffness * dif[2]
-    elif jnt_type == 2 or jnt_type == 3:  # mjJNT_SLIDE, mjJNT_HINGE
+    else:  # mjJNT_SLIDE, mjJNT_HINGE
       fdif = d.qpos[worldid, qposid] - m.qpos_spring[qposid]
       d.qfrc_spring[worldid, dofid] = -stiffness * fdif
 

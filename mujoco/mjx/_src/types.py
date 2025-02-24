@@ -16,65 +16,42 @@ import warp as wp
 import enum
 import mujoco
 
-import mujoco
-from mujoco import mjx
-
 MJ_MINVAL = mujoco.mjMINVAL
 
-# disable flags - TODO(team): make this bullet-proof.
-MJ_DSBL_CONSTRAINT = mujoco.mjtDisableBit.mjDSBL_CONSTRAINT.value
-MJ_DSBL_EQUALITY = mujoco.mjtDisableBit.mjDSBL_EQUALITY.value
-MJ_DSBL_FRICTIONLOSS = mujoco.mjtDisableBit.mjDSBL_FRICTIONLOSS.value
-MJ_DSBL_LIMIT = mujoco.mjtDisableBit.mjDSBL_LIMIT.value
-MJ_DSBL_CONTACT = mujoco.mjtDisableBit.mjDSBL_CONTACT.value
-MJ_DSBL_PASSIVE = mujoco.mjtDisableBit.mjDSBL_PASSIVE.value
-MJ_DSBL_GRAVITY = mujoco.mjtDisableBit.mjDSBL_GRAVITY.value
-MJ_DSBL_CLAMPCTRL = mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL.value
-MJ_DSBL_WARMSTART = mujoco.mjtDisableBit.mjDSBL_WARMSTART.value
-MJ_DSNL_FILTERPARENT = mujoco.mjtDisableBit.mjDSBL_FILTERPARENT.value
-MJ_DSBL_ACTUATION = mujoco.mjtDisableBit.mjDSBL_ACTUATION.value
-MJ_DSBL_REFSAFE = mujoco.mjtDisableBit.mjDSBL_REFSAFE.value
-MJ_DSBL_SENSOR = mujoco.mjtDisableBit.mjDSBL_SENSOR.value
-MJ_DSBL_MIDPHASE = mujoco.mjtDisableBit.mjDSBL_MIDPHASE.value
-MJ_DSBL_EULERDAMP = mujoco.mjtDisableBit.mjDSBL_EULERDAMP.value
 
+class DisableBit(enum.IntFlag):
+  """Disable default feature bitflags.
 
-class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
-  pass
+  Members:
+    CONSTRAINT:   entire constraint solver
+    EQUALITY:     equality constraints
+    FRICTIONLOSS: joint and tendon frictionloss constraints
+    LIMIT:        joint and tendon limit constraints
+    CONTACT:      contact constraints
+    PASSIVE:      passive forces
+    GRAVITY:      gravitational forces
+    CLAMPCTRL:    clamp control to specified range
+    WARMSTART:    warmstart constraint solver
+    ACTUATION:    apply actuation forces
+    REFSAFE:      integrator safety: make ref[0]>=2*timestep
+    SENSOR:       sensors
+  """
 
-
-vec10 = vec10f
-array2df = wp.array2d(dtype=wp.float32)
-array3df = wp.array3d(dtype=wp.float32)
-
-
-# gaintype
-MJ_GAINTYPE_FIXED = mujoco.mjtGain.mjGAIN_FIXED.value
-MJ_GAINTYPE_AFFINE = mujoco.mjtGain.mjGAIN_AFFINE.value
-MJ_GAINTYPE_MUSCLE = mujoco.mjtGain.mjGAIN_MUSCLE.value
-# unsupported: USER
-
-# biastype
-MJ_BIASTYPE_NONE = mujoco.mjtBias.mjBIAS_NONE.value
-MJ_BIASTYPE_AFFINE = mujoco.mjtBias.mjBIAS_AFFINE.value
-MJ_BIASTYPE_MUSCLE = mujoco.mjtBias.mjBIAS_MUSCLE.value
-# unsupported: USER
-
-# dyntype
-MJ_DYNTYPE_NONE = mujoco.mjtDyn.mjDYN_NONE.value
-MJ_DYNTYPE_INTEGRATOR = mujoco.mjtDyn.mjDYN_INTEGRATOR.value
-MJ_DYNTYPE_FILTER = mujoco.mjtDyn.mjDYN_FILTER.value
-MJ_DYNTYPE_FILTEREXACT = mujoco.mjtDyn.mjDYN_FILTEREXACT.value
-MJ_DYNTYPE_MUSCLE = mujoco.mjtDyn.mjDYN_MUSCLE.value
-# unsupported: USER
-
-
-@wp.struct
-class Option:
-  gravity: wp.vec3
-  is_sparse: bool  # warp only
-  timestep: float
-  disableflags: int
+  CONSTRAINT = mujoco.mjtDisableBit.mjDSBL_CONSTRAINT
+  EQUALITY = mujoco.mjtDisableBit.mjDSBL_EQUALITY
+  FRICTIONLOSS = mujoco.mjtDisableBit.mjDSBL_FRICTIONLOSS
+  LIMIT = mujoco.mjtDisableBit.mjDSBL_LIMIT
+  CONTACT = mujoco.mjtDisableBit.mjDSBL_CONTACT
+  PASSIVE = mujoco.mjtDisableBit.mjDSBL_PASSIVE
+  GRAVITY = mujoco.mjtDisableBit.mjDSBL_GRAVITY
+  CLAMPCTRL = mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL
+  WARMSTART = mujoco.mjtDisableBit.mjDSBL_WARMSTART
+  ACTUATION = mujoco.mjtDisableBit.mjDSBL_ACTUATION
+  REFSAFE = mujoco.mjtDisableBit.mjDSBL_REFSAFE
+  SENSOR = mujoco.mjtDisableBit.mjDSBL_SENSOR
+  EULERDAMP = mujoco.mjtDisableBit.mjDSBL_EULERDAMP
+  FILTERPARENT = mujoco.mjtDisableBit.mjDSBL_FILTERPARENT
+  # unsupported: MIDPHASE
 
 
 class TrnType(enum.IntEnum):
@@ -90,6 +67,25 @@ class TrnType(enum.IntEnum):
   JOINT = mujoco.mjtTrn.mjTRN_JOINT
   JOINTINPARENT = mujoco.mjtTrn.mjTRN_JOINTINPARENT
   # unsupported: SITE, TENDON, SLIDERCRANK, BODY
+
+
+class DynType(enum.IntEnum):
+  """Type of actuator dynamics.
+
+  Members:
+    NONE: no internal dynamics; ctrl specifies force
+    INTEGRATOR: integrator: da/dt = u
+    FILTER: linear filter: da/dt = (u-a) / tau
+    FILTEREXACT: linear filter: da/dt = (u-a) / tau, with exact integration
+    MUSCLE: piece-wise linear filter with two time constants
+  """
+
+  NONE = mujoco.mjtDyn.mjDYN_NONE
+  INTEGRATOR = mujoco.mjtDyn.mjDYN_INTEGRATOR
+  FILTER = mujoco.mjtDyn.mjDYN_FILTER
+  FILTEREXACT = mujoco.mjtDyn.mjDYN_FILTEREXACT
+  MUSCLE = mujoco.mjtDyn.mjDYN_MUSCLE
+  # unsupported: USER
 
 
 class JointType(enum.IntEnum):
@@ -112,6 +108,23 @@ class JointType(enum.IntEnum):
 
   def qpos_width(self) -> int:
     return {0: 7, 1: 4, 2: 1, 3: 1}[self.value]
+
+
+class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
+  pass
+
+
+vec10 = vec10f
+array2df = wp.array2d(dtype=wp.float32)
+array3df = wp.array3d(dtype=wp.float32)
+
+
+@wp.struct
+class Option:
+  gravity: wp.vec3
+  is_sparse: bool  # warp only
+  timestep: float
+  disableflags: int
 
 
 @wp.struct
@@ -197,7 +210,6 @@ class Data:
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
   ctrl: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
   qacc: wp.array(dtype=wp.float32, ndim=2)
@@ -228,6 +240,7 @@ class Data:
   actuator_moment: wp.array(dtype=wp.float32, ndim=3)
   cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
   cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
+  qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   qfrc_bias: wp.array(dtype=wp.float32, ndim=2)
   qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
   qfrc_passive: wp.array(dtype=wp.float32, ndim=2)
@@ -235,7 +248,6 @@ class Data:
   qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
-  ctrl: wp.array(dtype=wp.float32, ndim=2)
 
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)

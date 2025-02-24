@@ -49,7 +49,7 @@ def kinematics(m: Model, d: Data):
       pid = m.body_parentid[bodyid]
       xpos = (d.xmat[worldid, pid] * m.body_pos[bodyid]) + d.xpos[worldid, pid]
       xquat = math.mul_quat(d.xquat[worldid, pid], m.body_quat[bodyid])
-    elif jntnum == 1 and m.jnt_type[jntadr] == 0:
+    elif jntnum == 1 and m.jnt_type[jntadr] == wp.static(JointType.FREE.value):
       # free joint
       qadr = m.jnt_qposadr[jntadr]
       # TODO(erikfrey): would it be better to use some kind of wp.copy here?
@@ -71,7 +71,7 @@ def kinematics(m: Model, d: Data):
         xanchor = math.rot_vec_quat(m.jnt_pos[jntadr], xquat) + xpos
         xaxis = math.rot_vec_quat(jnt_axis, xquat)
 
-        if jnt_type == 1:  # ball
+        if jnt_type == wp.static(JointType.BALL.value):
           qloc = wp.quat(
             qpos[qadr + 0],
             qpos[qadr + 1],
@@ -81,9 +81,9 @@ def kinematics(m: Model, d: Data):
           xquat = math.mul_quat(xquat, qloc)
           # correct for off-center rotation
           xpos = xanchor - math.rot_vec_quat(m.jnt_pos[jntadr], xquat)
-        elif jnt_type == 2:  # slide
+        elif jnt_type == wp.static(JointType.SLIDE.value):
           xpos += xaxis * (qpos[qadr] - m.qpos0[qadr])
-        elif jnt_type == 3:  # hinge
+        elif jnt_type == wp.static(JointType.HINGE.value):
           qpos0 = m.qpos0[qadr]
           qloc = math.axis_angle_to_quat(jnt_axis, qpos[qadr] - qpos0)
           xquat = math.mul_quat(xquat, qloc)
@@ -181,7 +181,7 @@ def com_pos(m: Model, d: Data):
     offset = d.subtree_com[worldid, m.body_rootid[bodyid]] - d.xanchor[worldid, jntid]
 
     res = d.cdof[worldid]
-    if jnt_type == 0:  # free
+    if jnt_type == wp.static(JointType.FREE.value):
       res[dofid + 0] = wp.spatial_vector(0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
       res[dofid + 1] = wp.spatial_vector(0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
       res[dofid + 2] = wp.spatial_vector(0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
@@ -189,14 +189,14 @@ def com_pos(m: Model, d: Data):
       res[dofid + 3] = wp.spatial_vector(xmat[0], wp.cross(xmat[0], offset))
       res[dofid + 4] = wp.spatial_vector(xmat[1], wp.cross(xmat[1], offset))
       res[dofid + 5] = wp.spatial_vector(xmat[2], wp.cross(xmat[2], offset))
-    elif jnt_type == 1:  # ball
+    elif jnt_type == wp.static(JointType.BALL.value):  # ball
       # I_3 rotation in child frame (assume no subsequent rotations)
       res[dofid + 0] = wp.spatial_vector(xmat[0], wp.cross(xmat[0], offset))
       res[dofid + 1] = wp.spatial_vector(xmat[1], wp.cross(xmat[1], offset))
       res[dofid + 2] = wp.spatial_vector(xmat[2], wp.cross(xmat[2], offset))
-    elif jnt_type == 2:  # slide
+    elif jnt_type == wp.static(JointType.SLIDE.value):
       res[dofid] = wp.spatial_vector(wp.vec3(0.0), xaxis)
-    elif jnt_type == 3:  # hinge
+    elif jnt_type == wp.static(JointType.HINGE.value):  # hinge
       res[dofid] = wp.spatial_vector(xaxis, wp.cross(xaxis, offset))
 
   body_treeadr = m.body_treeadr.numpy()
@@ -530,7 +530,7 @@ def com_vel(m: Model, d: Data):
     for j in range(jntid, jntid + jntnum):
       jnttype = m.jnt_type[j]
 
-      if jnttype == 0:  # free
+      if jnttype == wp.static(JointType.FREE.value):
         cvel += cdof[dofid + 0] * qvel[dofid + 0]
         cvel += cdof[dofid + 1] * qvel[dofid + 1]
         cvel += cdof[dofid + 2] * qvel[dofid + 2]
@@ -544,7 +544,7 @@ def com_vel(m: Model, d: Data):
         cvel += cdof[dofid + 5] * qvel[dofid + 5]
 
         dofid += 6
-      elif jnttype == 1:  # ball
+      elif jnttype == wp.static(JointType.BALL.value):
         d.cdof_dot[worldid, dofid + 0] = math.motion_cross(cvel, cdof[dofid + 0])
         d.cdof_dot[worldid, dofid + 1] = math.motion_cross(cvel, cdof[dofid + 1])
         d.cdof_dot[worldid, dofid + 2] = math.motion_cross(cvel, cdof[dofid + 2])

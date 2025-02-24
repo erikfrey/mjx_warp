@@ -16,9 +16,6 @@
 import warp as wp
 import mujoco
 import numpy as np
-import warp as wp
-
-import mujoco
 
 from . import support
 from . import types
