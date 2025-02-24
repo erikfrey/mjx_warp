@@ -297,10 +297,9 @@ def implicit(m: Model, d: Data) -> Data:
     @wp.func
     def neg(x: wp.float32):
         return -x
-
-    @wp.kernel
-    def add_damping(m: Model, d: Data, damping: wp.array(dtype=wp.float32)):
-      worldid = wp.tid()
+    
+    @wp.func 
+    def add_damping(d: Data, damping: wp.array(dtype=wp.float32), worldid: int):
       if wp.static(actuation_disabled):
         zeros = wp.tile_zeros(shape=(tilesize, tilesize), dtype=wp.float32)
       else:
@@ -309,8 +308,15 @@ def implicit(m: Model, d: Data) -> Data:
       negative = wp.tile_map(neg, dof_damping)
       damping_tile = wp.tile_diag_add(zeros, negative)
       wp.tile_store(d.qM_integration[worldid], damping_tile)
+        
 
-    wp.launch_tiled(add_damping, dim=(d.nworld), inputs=[m, d, m.dof_damping], block_dim=block_dim)
+    @wp.kernel
+    def add_damping_kernel(d: Data, damping: wp.array(dtype=wp.float32)):
+      worldid = wp.tid()
+      add_damping(d, damping, worldid)
+      
+
+    wp.launch_tiled(add_damping_kernel, dim=(d.nworld), inputs=[d, m.dof_damping], block_dim=block_dim)
 
   assert not m.opt.is_sparse # unsupported
 
