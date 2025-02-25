@@ -16,7 +16,7 @@ pip install -e .
 During early development mjWarp is on the bleeding edge - you should install warp nightly:
 
 ```
-pip install warp-lang --upgrade -f https://pypi.nvidia.com/warp-lang/
+pip install warp-lang --pre --upgrade -f https://pypi.nvidia.com/warp-lang/
 ```
 
 Now make sure everything is working:
