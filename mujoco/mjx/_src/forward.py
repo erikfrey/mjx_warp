@@ -327,6 +327,7 @@ def implicit(m: Model, d: Data) -> Data:
 
   # we reuse qM_integration to store qDeriv and then update in-place with qM
   if passive_enabled or actuation_enabled:
+  if passive_enabled or (actuation_enabled and m.actuator_affine_bias_gain):
     if actuation_enabled and m.actuator_affine_bias_gain:
       wp.launch(
         actuator_bias_gain_vel,
