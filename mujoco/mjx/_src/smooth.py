@@ -692,7 +692,7 @@ def _factor_solve_i_dense(m: Model, d: Data, M: array3df, x: array2df, y: array2
 
 
 def factor_solve_i(m, d, M, L, D, x, y):
-  if m.opt.is_spare:
+  if m.opt.is_sparse:
     _factor_i_sparse(m, d, M, L, D)
     _solve_LD_sparse(m, d, L, D, x, y)
   else:
