@@ -282,6 +282,7 @@ class Data:
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)
   qacc_integration: wp.array(dtype=wp.float32, ndim=2)
+  act_vel_integration: wp.array(dtype=wp.float32, ndim=2)
 
   qM_integration: wp.array(dtype=wp.float32, ndim=3)
   qLD_integration: wp.array(dtype=wp.float32, ndim=3)

@@ -307,11 +307,12 @@ def implicit(m: Model, d: Data) -> Data:
         negative = wp.tile_map(neg, dof_damping)
         qderiv_tile = wp.tile_diag_add(qderiv_tile, negative)
 
-      # add to qM and also sum qfrc.
+      # add to qM
       qM_tile = wp.tile_load(d.qM[worldid], shape=(tilesize_nv, tilesize_nv))
       qderiv_tile = wp.tile_map(subtract_multiply, qM_tile, qderiv_tile)
       wp.tile_store(d.qM_integration[worldid], qderiv_tile)
 
+      # sum qfrc
       qfrc_smooth_tile = wp.tile_load(d.qfrc_smooth[worldid], shape=tilesize_nv)
       qfrc_constraint_tile = wp.tile_load(d.qfrc_constraint[worldid], shape=tilesize_nv)
       qfrc_combined = wp.tile_map(add, qfrc_smooth_tile, qfrc_constraint_tile)
@@ -327,10 +328,9 @@ def implicit(m: Model, d: Data) -> Data:
   # we reuse qM_integration to store qDeriv and then update in-place with qM
   if damping_enabled or actuation_enabled:
     if actuation_enabled:
-      vel = wp.empty(shape=(d.nworld, m.nu), dtype=wp.float32)  # todo: remove
-      wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, vel])
+      wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, d.act_vel_integration])
 
-    qderiv_actuator_moment(m, d, vel, m.dof_damping)
+    qderiv_actuator_moment(m, d, d.act_vel_integration, m.dof_damping)
 
     smooth._factor_solve_i_dense(
       m, d, d.qM_integration, d.qacc_integration, d.qfrc_integration
