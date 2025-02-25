@@ -264,7 +264,7 @@ def implicit(m: Model, d: Data) -> Data:
     d.act_vel_integration[worldid, actid] = bias_vel + gain_vel * ctrl
 
   def qderiv_actuator_damping_fused(
-    m: Model, d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
+    m: Model, d: Data, damping: wp.array(dtype=wp.float32)
   ):
     block_dim = 64
     tilesize_nu = m.nu
@@ -284,7 +284,7 @@ def implicit(m: Model, d: Data) -> Data:
 
     @wp.kernel
     def qderiv_actuator_fused_kernel(
-      d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
+      d: Data, damping: wp.array(dtype=wp.float32)
     ):
       worldid = wp.tid()
 
@@ -294,7 +294,7 @@ def implicit(m: Model, d: Data) -> Data:
         )
 
         zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
-        vel_tile = wp.tile_load(vel[worldid], shape=(tilesize_nu))
+        vel_tile = wp.tile_load(d.act_vel_integration[worldid], shape=(tilesize_nu))
         diag = wp.tile_diag_add(zeros, vel_tile)
         actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
         amTVel = wp.tile_matmul(actuator_moment_T, diag)
@@ -321,7 +321,7 @@ def implicit(m: Model, d: Data) -> Data:
     wp.launch_tiled(
       qderiv_actuator_fused_kernel,
       dim=(d.nworld),
-      inputs=[d, vel, damping],
+      inputs=[d, damping],
       block_dim=block_dim,
     )
 
@@ -334,7 +334,7 @@ def implicit(m: Model, d: Data) -> Data:
         inputs=[m, d],
       )
 
-    qderiv_actuator_damping_fused(m, d, d.act_vel_integration, m.dof_damping)
+    qderiv_actuator_damping_fused(m, d, m.dof_damping)
 
     smooth._factor_solve_i_dense(
       m, d, d.qM_integration, d.qacc_integration, d.qfrc_integration
