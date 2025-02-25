@@ -240,7 +240,7 @@ def implicit(m: Model, d: Data) -> Data:
   actuation_enabled = not m.opt.disableflags & DisableBit.ACTUATION.value
 
   @wp.kernel
-  def actuator_bias_gain_vel(m: Model, d: Data, vel: array2df):
+  def actuator_bias_gain_vel(m: Model, d: Data):
     worldid, actid = wp.tid()
 
     bias_vel = 0.0
@@ -261,7 +261,7 @@ def implicit(m: Model, d: Data) -> Data:
     if actuator_dyntype != wp.static(DynType.NONE.value):
       ctrl = d.act[worldid, actid]
 
-    vel[worldid, actid] = bias_vel + gain_vel * ctrl
+    d.act_vel_integration[worldid, actid] = bias_vel + gain_vel * ctrl
 
   def qderiv_actuator_damping_fused(
     m: Model, d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
@@ -331,7 +331,7 @@ def implicit(m: Model, d: Data) -> Data:
       wp.launch(
         actuator_bias_gain_vel,
         dim=(d.nworld, m.nu),
-        inputs=[m, d, d.act_vel_integration],
+        inputs=[m, d],
       )
 
     qderiv_actuator_damping_fused(m, d, d.act_vel_integration, m.dof_damping)
