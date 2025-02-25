@@ -225,7 +225,7 @@ def implicit(m: Model, d: Data) -> Data:
   # I further tried fusing in the cholesky factor/solve but the high
   # storage requirements led to low occupancy and thus worse performance.
   #
-  # The actuator_bias_gain_vel could theoretically be fused in as well,
+  # The actuator_bias_gain_vel kernel could theoretically be fused in as well,
   # but it's pretty clean straight-line code that loads a lot of data but
   # only stores one array, so I think the benefit of keeping that one on-chip
   # is likely not worth it compared to the compromises we're making with tile API.
@@ -236,7 +236,7 @@ def implicit(m: Model, d: Data) -> Data:
   assert not m.opt.is_sparse  # unsupported
 
   # compile-time constants
-  damping_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
+  passive_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
   actuation_enabled = not m.opt.disableflags & DisableBit.ACTUATION.value
 
   @wp.kernel
@@ -263,7 +263,7 @@ def implicit(m: Model, d: Data) -> Data:
 
     vel[worldid, actid] = bias_vel + gain_vel * ctrl
 
-  def qderiv_actuator_moment(
+  def qderiv_actuator_damping_fused(
     m: Model, d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
   ):
     block_dim = 64
@@ -283,7 +283,7 @@ def implicit(m: Model, d: Data) -> Data:
       return x + y
 
     @wp.kernel
-    def qderiv_actuator_moment_kernel(
+    def qderiv_actuator_fused_kernel(
       d: Data, vel: array2df, damping: wp.array(dtype=wp.float32)
     ):
       worldid = wp.tid()
@@ -302,7 +302,7 @@ def implicit(m: Model, d: Data) -> Data:
       else:
         qderiv_tile = wp.tile_zeros(shape=(tilesize_nv, tilesize_nv), dtype=wp.float32)
 
-      if wp.static(damping_enabled):
+      if wp.static(passive_enabled):
         dof_damping = wp.tile_load(damping, shape=tilesize_nv)
         negative = wp.tile_map(neg, dof_damping)
         qderiv_tile = wp.tile_diag_add(qderiv_tile, negative)
@@ -319,18 +319,22 @@ def implicit(m: Model, d: Data) -> Data:
       wp.tile_store(d.qfrc_integration[worldid], qfrc_combined)
 
     wp.launch_tiled(
-      qderiv_actuator_moment_kernel,
+      qderiv_actuator_fused_kernel,
       dim=(d.nworld),
       inputs=[d, vel, damping],
       block_dim=block_dim,
     )
 
   # we reuse qM_integration to store qDeriv and then update in-place with qM
-  if damping_enabled or actuation_enabled:
+  if passive_enabled or actuation_enabled:
     if actuation_enabled and m.actuator_affine_bias_gain:
-      wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, d.act_vel_integration])
+      wp.launch(
+        actuator_bias_gain_vel,
+        dim=(d.nworld, m.nu),
+        inputs=[m, d, d.act_vel_integration],
+      )
 
-    qderiv_actuator_moment(m, d, d.act_vel_integration, m.dof_damping)
+    qderiv_actuator_damping_fused(m, d, d.act_vel_integration, m.dof_damping)
 
     smooth._factor_solve_i_dense(
       m, d, d.qM_integration, d.qacc_integration, d.qfrc_integration

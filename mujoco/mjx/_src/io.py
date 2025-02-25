@@ -43,7 +43,10 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
 
   # allows us to skip a lot of code in implicit integration
-  m.actuator_affine_bias_gain = bool(np.any(m.actuator_biastype == types.BiasType.AFFINE.value) or np.any(m.actuator_gaintype == types.GainType.AFFINE.value))
+  m.actuator_affine_bias_gain = bool(
+    np.any(m.actuator_biastype == types.BiasType.AFFINE.value)
+    or np.any(m.actuator_gaintype == types.GainType.AFFINE.value)
+  )
 
   # body_tree is BFS ordering of body ids
   # body_treeadr contains starting index of each body tree level
