@@ -41,6 +41,19 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
 
+  # indices for sparse qM
+  is_, js, madr_ijs = [], [], []
+  for i in range(mjm.nv):
+    madr_ij, j = mjm.dof_Madr[i], i
+
+    while True:
+      madr_ij, j = madr_ij + 1, mjm.dof_parentid[j]
+      if j == -1:
+        break
+      is_, js, madr_ijs = is_ + [i], js + [j], madr_ijs + [madr_ij]
+
+  qM_i, qM_j, qM_madr_ij = (np.array(x, dtype=np.int32) for x in (is_, js, madr_ijs))
+
   # body_tree is BFS ordering of body ids
   # body_treeadr contains starting index of each body tree level
   bodies, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
@@ -92,6 +105,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qLD_tileadr = np.cumsum(tile_off)[:-1]
     qLD_tilesize = np.array(sorted(tiles.keys()))
 
+  m.qM_i = wp.array(qM_i, dtype=wp.int32, ndim=1)
+  m.qM_j = wp.array(qM_j, dtype=wp.int32, ndim=1)
+  m.qM_madr_ij = wp.array(qM_madr_ij, dtype=wp.int32, ndim=1)
   m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
   m.qLD_update_treeadr = wp.array(
     qLD_update_treeadr, dtype=wp.int32, ndim=1, device="cpu"

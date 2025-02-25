@@ -34,5 +34,6 @@ from ._src.smooth import rne
 from ._src.smooth import solve_m
 from ._src.smooth import transmission
 from ._src.support import is_sparse
+from ._src.support import mul_m
 from ._src.test_util import benchmark
 from ._src.types import *

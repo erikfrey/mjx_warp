@@ -144,6 +144,9 @@ class Model:
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
   body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qM_i: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qM_j: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qM_madr_ij: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_update_tree: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
   qLD_update_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_tile: wp.array(dtype=wp.int32, ndim=1)  # warp only
