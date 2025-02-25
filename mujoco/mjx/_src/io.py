@@ -32,6 +32,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.ngeom = mjm.ngeom
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
+  m.timestep = mjm.opt.timestep
   m.nM = mjm.nM
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
   m.opt.is_sparse = support.is_sparse(mjm)
@@ -40,6 +41,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
 
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
+
+  # allows us to skip a lot of code in implicit integration
+  m.actuator_affine_bias_gain = bool(np.any(m.actuator_biastype == types.BiasType.AFFINE.value) or np.any(m.actuator_gaintype == types.GainType.AFFINE.value))
 
   # body_tree is BFS ordering of body ids
   # body_treeadr contains starting index of each body tree level
@@ -137,7 +141,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.actuator_ctrlrange = wp.array(mjm.actuator_ctrlrange, dtype=wp.vec2, ndim=1)
   m.actuator_forcelimited = wp.array(mjm.actuator_forcelimited, dtype=wp.bool, ndim=1)
   m.actuator_forcerange = wp.array(mjm.actuator_forcerange, dtype=wp.vec2, ndim=1)
+  m.actuator_gaintype = wp.array(mjm.actuator_gaintype, dtype=wp.int32, ndim=1)
   m.actuator_gainprm = wp.array(mjm.actuator_gainprm, dtype=wp.float32, ndim=2)
+  m.actuator_biastype = wp.array(mjm.actuator_biastype, dtype=wp.int32, ndim=1)
   m.actuator_biasprm = wp.array(mjm.actuator_biasprm, dtype=wp.float32, ndim=2)
   m.actuator_gear = wp.array(mjm.actuator_gear, dtype=wp.spatial_vector, ndim=1)
   m.actuator_actlimited = wp.array(mjm.actuator_actlimited, dtype=wp.bool, ndim=1)
@@ -200,6 +206,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.ctrl = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
 
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -207,6 +214,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qM_integration = wp.zeros_like(d.qM)
   d.qLD_integration = wp.zeros_like(d.qLD)
   d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
+  d.act_vel_integration = wp.zeros_like(d.ctrl)
 
   return d
 
@@ -279,6 +287,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
+  d.ctrl = wp.array(tile(mjd.ctrl), dtype=wp.float32, ndim=2)
 
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -286,5 +295,6 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qM_integration = wp.zeros_like(d.qM)
   d.qLD_integration = wp.zeros_like(d.qLD)
   d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
+  d.act_vel_integration = wp.zeros_like(d.ctrl)
 
   return d

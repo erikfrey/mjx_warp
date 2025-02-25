@@ -88,6 +88,36 @@ class DynType(enum.IntEnum):
   # unsupported: USER
 
 
+class GainType(enum.IntEnum):
+  """Type of actuator gain.
+
+  Members:
+    FIXED: fixed gain
+    AFFINE: const + kp*length + kv*velocity
+    MUSCLE: muscle FLV curve computed by muscle_gain
+  """
+
+  FIXED = mujoco.mjtGain.mjGAIN_FIXED
+  AFFINE = mujoco.mjtGain.mjGAIN_AFFINE
+  MUSCLE = mujoco.mjtGain.mjGAIN_MUSCLE
+  # unsupported: USER
+
+
+class BiasType(enum.IntEnum):
+  """Type of actuator bias.
+
+  Members:
+    NONE: no bias
+    AFFINE: const + kp*length + kv*velocity
+    MUSCLE: muscle passive force computed by muscle_bias
+  """
+
+  NONE = mujoco.mjtBias.mjBIAS_NONE
+  AFFINE = mujoco.mjtBias.mjBIAS_AFFINE
+  MUSCLE = mujoco.mjtBias.mjBIAS_MUSCLE
+  # unsupported: USER
+
+
 class JointType(enum.IntEnum):
   """Type of degree of freedom.
 
@@ -138,6 +168,8 @@ class Model:
   ngeom: int
   nsite: int
   nmocap: int
+  nlevel: int  # warp only
+  timestep: float
   nM: int
   opt: Option
   qpos0: wp.array(dtype=wp.float32, ndim=1)
@@ -189,14 +221,17 @@ class Model:
   actuator_ctrlrange: wp.array(dtype=wp.vec2, ndim=1)
   actuator_forcelimited: wp.array(dtype=wp.bool, ndim=1)
   actuator_forcerange: wp.array(dtype=wp.vec2, ndim=1)
+  actuator_gaintype: wp.array(dtype=wp.int32, ndim=1)
   actuator_gainprm: wp.array(dtype=wp.float32, ndim=2)
   actuator_biasprm: wp.array(dtype=wp.float32, ndim=2)
   actuator_gear: wp.array(dtype=wp.spatial_vector, ndim=1)
   actuator_actlimited: wp.array(dtype=wp.bool, ndim=1)
   actuator_actrange: wp.array(dtype=wp.vec2, ndim=1)
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
+  actuator_biastype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=vec10f, ndim=1)
+  actuator_affine_bias_gain: bool
 
 
 @wp.struct
@@ -248,6 +283,7 @@ class Data:
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)
   qacc_integration: wp.array(dtype=wp.float32, ndim=2)
+  act_vel_integration: wp.array(dtype=wp.float32, ndim=2)
 
   qM_integration: wp.array(dtype=wp.float32, ndim=3)
   qLD_integration: wp.array(dtype=wp.float32, ndim=3)
