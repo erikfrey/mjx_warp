@@ -197,15 +197,6 @@ def euler(m: Model, d: Data) -> Data:
 
   if not m.opt.disableflags & DisableBit.EULERDAMP.value:
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
-    smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
-    smooth.solve_LD(
-      m,
-      d,
-      d.qLD_integration,
-      d.qLDiagInv_integration,
-      d.qacc_integration,
-      d.qfrc_integration,
-    )
     return _advance(m, d, d.act_dot, d.qacc_integration)
 
   return _advance(m, d, d.act_dot, d.qacc)
