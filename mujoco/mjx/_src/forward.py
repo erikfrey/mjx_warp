@@ -266,7 +266,12 @@ def implicit(m: Model, d: Data) -> Data:
   def qderiv_actuator_damping_fused(
     m: Model, d: Data, damping: wp.array(dtype=wp.float32)
   ):
-    block_dim = 64
+    
+    if actuation_enabled and m.actuator_affine_bias_gain:
+      block_dim = 64
+    else:
+      block_dim = 256
+    
     tilesize_nu = m.nu
     tilesize_nv = m.nv
 
