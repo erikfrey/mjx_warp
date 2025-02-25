@@ -197,6 +197,7 @@ class Model:
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=vec10f, ndim=1)
+  geom_aabb: wp.array(dtype=wp.types.matrix(shape=(2, 3), dtype=wp.float32), ndim=1)
 
 
 @wp.struct
@@ -252,3 +253,15 @@ class Data:
   qM_integration: wp.array(dtype=wp.float32, ndim=3)
   qLD_integration: wp.array(dtype=wp.float32, ndim=3)
   qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)
+
+  # broadphase arrays
+  max_num_overlaps_per_world: int
+  broadphase_pairs: wp.array(dtype=wp.vec2i, ndim=2)
+  result_count: wp.array(dtype=wp.int32, ndim=1)
+  boxes_sorted: wp.array(dtype=wp.types.matrix(shape=(2, 3), dtype=wp.float32), ndim=2)
+  data_start: wp.array(dtype=wp.float32, ndim=2)
+  data_end: wp.array(dtype=wp.float32, ndim=2)
+  data_indexer: wp.array(dtype=wp.int32, ndim=2)
+  ranges: wp.array(dtype=wp.int32, ndim=2)
+  cumulative_sum: wp.array(dtype=wp.int32, ndim=1)
+  segment_indices: wp.array(dtype=wp.int32, ndim=1)
