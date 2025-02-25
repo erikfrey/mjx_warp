@@ -231,6 +231,7 @@ class Model:
   actuator_biastype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=vec10f, ndim=1)
+  actuator_affine_bias_gain: bool
 
 
 @wp.struct

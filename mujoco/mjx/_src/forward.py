@@ -288,7 +288,7 @@ def implicit(m: Model, d: Data) -> Data:
     ):
       worldid = wp.tid()
 
-      if wp.static(actuation_enabled):
+      if wp.static(actuation_enabled and m.actuator_affine_bias_gain):
         actuator_moment_tile = wp.tile_load(
           d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv)
         )
@@ -327,7 +327,7 @@ def implicit(m: Model, d: Data) -> Data:
 
   # we reuse qM_integration to store qDeriv and then update in-place with qM
   if damping_enabled or actuation_enabled:
-    if actuation_enabled:
+    if actuation_enabled and m.actuator_affine_bias_gain:
       wp.launch(actuator_bias_gain_vel, dim=(d.nworld, m.nu), inputs=[m, d, d.act_vel_integration])
 
     qderiv_actuator_moment(m, d, d.act_vel_integration, m.dof_damping)
