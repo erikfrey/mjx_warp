@@ -15,6 +15,7 @@
 
 """Public API for MJX."""
 
+from ._src.constraint import make_constraint
 from ._src.forward import euler
 from ._src.forward import forward
 from ._src.forward import fwd_actuation

@@ -17,6 +17,7 @@ from typing import Optional
 
 import warp as wp
 
+from . import constraint
 from . import math
 from . import passive
 from . import smooth
@@ -219,7 +220,7 @@ def fwd_position(m: Model, d: Data):
   smooth.crb(m, d)
   smooth.factor_m(m, d)
   # TODO(team): collision_driver.collision
-  # TODO(team): constraint.make_constraint
+  constraint.make_constraint(m, d)
   smooth.transmission(m, d)
 
 
