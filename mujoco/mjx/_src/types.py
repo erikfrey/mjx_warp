@@ -124,6 +124,7 @@ class Option:
   gravity: wp.vec3
   is_sparse: bool  # warp only
   timestep: float
+  integrator: int  # mjtIntegrator
   disableflags: int
 
 

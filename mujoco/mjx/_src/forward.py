@@ -16,6 +16,7 @@
 from typing import Optional
 
 import warp as wp
+import mujoco
 
 from . import math
 from . import passive
@@ -337,3 +338,19 @@ def forward(m: Model, d: Data):
   wp.copy(d.qacc, d.qacc_smooth)
 
   # TODO(team): solver.solve
+
+
+def step(m: Model, d: Data):
+  """Advance simulation."""
+  forward(m, d)
+
+  if m.opt.integrator == mujoco.mjtIntegrator.mjINT_EULER:
+    euler(m, d)
+  elif m.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4:
+    # TODO(team): rungekutta4
+    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
+  elif m.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICITFAST:
+    # TODO(team): implicit
+    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
+  else:
+    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")

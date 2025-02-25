@@ -36,6 +36,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
   m.opt.is_sparse = support.is_sparse(mjm)
   m.opt.timestep = mjm.opt.timestep
+  m.opt.integrator = mjm.opt.integrator
   m.opt.disableflags = mjm.opt.disableflags
 
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
