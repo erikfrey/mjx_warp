@@ -42,12 +42,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
 
-  # allows us to skip a lot of code in implicit integration
-  m.actuator_affine_bias_gain = bool(
-    np.any(m.actuator_biastype == types.BiasType.AFFINE.value)
-    or np.any(m.actuator_gaintype == types.GainType.AFFINE.value)
-  )
-
   # body_tree is BFS ordering of body ids
   # body_treeadr contains starting index of each body tree level
   bodies, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
@@ -154,6 +148,12 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.actuator_actadr = wp.array(mjm.actuator_actadr, dtype=wp.int32, ndim=1)
   m.actuator_dyntype = wp.array(mjm.actuator_dyntype, dtype=wp.int32, ndim=1)
   m.actuator_dynprm = wp.array(mjm.actuator_dynprm, dtype=types.vec10f, ndim=1)
+
+  # allows us to skip a lot of code in implicit integration
+  m.actuator_affine_bias_gain = bool(
+    np.any(mjm.actuator_biastype == types.BiasType.AFFINE.value)
+    or np.any(mjm.actuator_gaintype == types.GainType.AFFINE.value)
+  )
 
   return m
 
