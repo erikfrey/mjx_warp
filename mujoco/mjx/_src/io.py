@@ -32,7 +32,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.ngeom = mjm.ngeom
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
-  m.timestep = mjm.opt.timestep
   m.nM = mjm.nM
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
   m.opt.is_sparse = support.is_sparse(mjm)
