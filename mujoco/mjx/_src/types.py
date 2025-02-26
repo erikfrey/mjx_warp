@@ -168,8 +168,6 @@ class Model:
   ngeom: int
   nsite: int
   nmocap: int
-  nlevel: int  # warp only
-  timestep: float
   nM: int
   opt: Option
   qpos0: wp.array(dtype=wp.float32, ndim=1)
