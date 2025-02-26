@@ -79,19 +79,32 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     tree_off = [0] + [len(qLD_updates[i]) for i in range(len(qLD_updates))]
     qLD_update_treeadr = np.cumsum(tree_off)[:-1]
   else:
+    # how many actuators for each tree
+    tree = mjm.body_treeid[mjm.jnt_bodyid[mjm.actuator_trnid[:, 0]]]
+    ids, counts = np.unique(tree, return_counts=True)
+    acts_per_tree = dict(zip(ids, counts))
+
     # qLD_tile has the dof id of each tile in qLD for dense factor m
     # qLD_tileadr contains starting index in qLD_tile of each tile group
     # qLD_tilesize has the square tile size of each tile group
     tile_corners = [i for i in range(mjm.nv) if mjm.dof_parentid[i] == -1]
+    tree_id = mjm.dof_treeid[tile_corners]
     tiles = {}
+    act_beg = 0
     for i in range(len(tile_corners)):
       tile_beg = tile_corners[i]
       tile_end = mjm.nv if i == len(tile_corners) - 1 else tile_corners[i + 1]
-      tiles.setdefault(tile_end - tile_beg, []).append(tile_beg)
-    qLD_tile = np.concatenate([tiles[sz] for sz in sorted(tiles.keys())])
-    tile_off = [0] + [len(tiles[sz]) for sz in sorted(tiles.keys())]
-    qLD_tileadr = np.cumsum(tile_off)[:-1]
-    qLD_tilesize = np.array(sorted(tiles.keys()))
+      act_num = acts_per_tree[tree_id[i]]
+      tiles.setdefault((tile_end - tile_beg, act_num), []).append((tile_beg, act_beg))
+      act_beg += act_num
+
+    sorted_keys = sorted(tiles.keys())
+    qLD_tile = [t[0] for key in sorted_keys for t in tiles.get(key, [])]
+    qLD_tile_act = [t[1] for key in sorted_keys for t in tiles.get(key, [])]
+    tile_off = [0] + [len(tiles[sz][0]) for sz in sorted(tiles.keys())]
+    qLD_tileadr = np.cumsum(tile_off)[:-1] # offset
+    qLD_tilesize = np.array([a[0] for a in sorted_keys]) # for this level
+    qLD_tilesize_nu = np.array([int(a[1]) for a in sorted_keys]) # for this level
 
   m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
   m.qLD_update_treeadr = wp.array(
@@ -100,6 +113,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qLD_tile = wp.array(qLD_tile, dtype=wp.int32, ndim=1)
   m.qLD_tileadr = wp.array(qLD_tileadr, dtype=wp.int32, ndim=1, device="cpu")
   m.qLD_tilesize = wp.array(qLD_tilesize, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_tile_act = wp.array(qLD_tile_act, dtype=wp.int32, ndim=1)
+  m.qLD_tilesize_nu = wp.array(qLD_tilesize_nu, dtype=wp.int32, ndim=1, device="cpu")
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)

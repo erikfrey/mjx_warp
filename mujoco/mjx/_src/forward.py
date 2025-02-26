@@ -259,13 +259,12 @@ def implicit(m: Model, d: Data) -> Data:
     m: Model, d: Data, damping: wp.array(dtype=wp.float32)
   ):
     
-    if actuation_enabled and m.actuator_affine_bias_gain:
+    run_affine_bias_gain = m.actuator_affine_bias_gain
+
+    if actuation_enabled and run_affine_bias_gain:
       block_dim = 64
     else:
       block_dim = 256
-    
-    tilesize_nu = m.nu
-    tilesize_nv = m.nv
 
     @wp.func
     def neg(x: wp.float32):
@@ -279,48 +278,60 @@ def implicit(m: Model, d: Data) -> Data:
     def add(x: wp.float32, y: wp.float32):
       return x + y
 
-    @wp.kernel
-    def qderiv_actuator_fused_kernel(
-      d: Data, damping: wp.array(dtype=wp.float32)
-    ):
-      worldid = wp.tid()
+    def qderiv_actuator_damping_tiled(adr: int, size: int, tilesize_nv: int, tilesize_nu: int):
 
-      if wp.static(actuation_enabled and m.actuator_affine_bias_gain):
-        actuator_moment_tile = wp.tile_load(
-          d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv)
-        )
+      @wp.kernel
+      def qderiv_actuator_fused_kernel(
+        m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
+      ):
+        worldid, nodeid = wp.tid()
+        offset_nv = m.qLD_tile[leveladr + nodeid]
+        offset_nu = m.qLD_tile_act[leveladr + nodeid]
 
-        zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
-        vel_tile = wp.tile_load(d.act_vel_integration[worldid], shape=(tilesize_nu))
-        diag = wp.tile_diag_add(zeros, vel_tile)
-        actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
-        amTVel = wp.tile_matmul(actuator_moment_T, diag)
-        qderiv_tile = wp.tile_matmul(amTVel, actuator_moment_tile)
-      else:
-        qderiv_tile = wp.tile_zeros(shape=(tilesize_nv, tilesize_nv), dtype=wp.float32)
+        if wp.static(actuation_enabled and run_affine_bias_gain):
+          actuator_moment_tile = wp.tile_load(
+            d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv), offset=(offset_nu, offset_nv)
+          )
 
-      if wp.static(passive_enabled):
-        dof_damping = wp.tile_load(damping, shape=tilesize_nv)
-        negative = wp.tile_map(neg, dof_damping)
-        qderiv_tile = wp.tile_diag_add(qderiv_tile, negative)
+          zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
+          vel_tile = wp.tile_load(d.act_vel_integration[worldid], shape=(tilesize_nu), offset=offset_nu)
+          diag = wp.tile_diag_add(zeros, vel_tile)
+          actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
+          amTVel = wp.tile_matmul(actuator_moment_T, diag)
+          qderiv_tile = wp.tile_matmul(amTVel, actuator_moment_tile)
+        else:
+          qderiv_tile = wp.tile_zeros(shape=(tilesize_nv, tilesize_nv), dtype=wp.float32)
 
-      # add to qM
-      qM_tile = wp.tile_load(d.qM[worldid], shape=(tilesize_nv, tilesize_nv))
-      qderiv_tile = wp.tile_map(subtract_multiply, qM_tile, qderiv_tile)
-      wp.tile_store(d.qM_integration[worldid], qderiv_tile)
+        if wp.static(passive_enabled):
+          dof_damping = wp.tile_load(damping, shape=tilesize_nv, offset=offset_nv)
+          negative = wp.tile_map(neg, dof_damping)
+          qderiv_tile = wp.tile_diag_add(qderiv_tile, negative)
 
-      # sum qfrc
-      qfrc_smooth_tile = wp.tile_load(d.qfrc_smooth[worldid], shape=tilesize_nv)
-      qfrc_constraint_tile = wp.tile_load(d.qfrc_constraint[worldid], shape=tilesize_nv)
-      qfrc_combined = wp.tile_map(add, qfrc_smooth_tile, qfrc_constraint_tile)
-      wp.tile_store(d.qfrc_integration[worldid], qfrc_combined)
+        # add to qM
+        qM_tile = wp.tile_load(d.qM[worldid], shape=(tilesize_nv, tilesize_nv), offset=(offset_nv, offset_nv))
+        qderiv_tile = wp.tile_map(subtract_multiply, qM_tile, qderiv_tile)
+        wp.tile_store(d.qM_integration[worldid], qderiv_tile, offset=(offset_nv, offset_nv))
 
-    wp.launch_tiled(
-      qderiv_actuator_fused_kernel,
-      dim=(d.nworld),
-      inputs=[d, damping],
-      block_dim=block_dim,
-    )
+        # sum qfrc
+        qfrc_smooth_tile = wp.tile_load(d.qfrc_smooth[worldid], shape=tilesize_nv, offset=offset_nv)
+        qfrc_constraint_tile = wp.tile_load(d.qfrc_constraint[worldid], shape=tilesize_nv, offset=offset_nv)
+        qfrc_combined = wp.tile_map(add, qfrc_smooth_tile, qfrc_constraint_tile)
+        wp.tile_store(d.qfrc_integration[worldid], qfrc_combined, offset=offset_nv)
+
+      wp.launch_tiled(
+        qderiv_actuator_fused_kernel,
+        dim=(d.nworld, size),
+        inputs=[m, d, damping, adr],
+        block_dim=block_dim,
+      )
+    
+    qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
+    qLD_tilesize_nu = m.qLD_tilesize_nu.numpy()
+
+    for i in range(len(qLD_tileadr)):
+      beg = qLD_tileadr[i]
+      end = m.qLD_tile.shape[0] if i == len(qLD_tileadr) - 1 else qLD_tileadr[i + 1]
+      qderiv_actuator_damping_tiled(beg, end - beg, int(qLD_tilesize[i]), int(qLD_tilesize_nu[i]))
 
   # we reuse qM_integration to store qDeriv and then update in-place with qM
   if passive_enabled or (actuation_enabled and m.actuator_affine_bias_gain):
