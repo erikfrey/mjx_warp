@@ -106,7 +106,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     sorted_keys = sorted(tiles.keys())
     qLD_tile = [t[0] for key in sorted_keys for t in tiles.get(key, [])]
     qLD_tile_act = [t[1] for key in sorted_keys for t in tiles.get(key, [])]
-    tile_off = [0] + [len(tiles[sz][0]) for sz in sorted(tiles.keys())]
+    tile_off = [0] + [len(tiles[sz]) for sz in sorted(tiles.keys())]
     qLD_tileadr = np.cumsum(tile_off)[:-1] # offset
     qLD_tilesize = np.array([a[0] for a in sorted_keys]) # for this level
     qLD_tilesize_nu = np.array([int(a[1]) for a in sorted_keys]) # for this level
