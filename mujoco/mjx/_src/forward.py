@@ -237,7 +237,7 @@ def implicit(m: Model, d: Data) -> Data:
 
   # compile-time constants
   passive_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
-  actuation_enabled = not m.opt.disableflags & DisableBit.ACTUATION.value
+  actuation_enabled = (not m.opt.disableflags & DisableBit.ACTUATION.value) and m.actuator_affine_bias_gain
 
   @wp.kernel
   def actuator_bias_gain_vel(m: Model, d: Data):
@@ -266,9 +266,7 @@ def implicit(m: Model, d: Data) -> Data:
   def qderiv_actuator_damping_fused(
     m: Model, d: Data, damping: wp.array(dtype=wp.float32)
   ):
-    run_affine_bias_gain = m.actuator_affine_bias_gain
-
-    if actuation_enabled and run_affine_bias_gain:
+    if actuation_enabled:
       block_dim = 64
     else:
       block_dim = 256
@@ -296,7 +294,7 @@ def implicit(m: Model, d: Data) -> Data:
         offset_nv = m.qderiv_implicit_offset_nv[leveladr + nodeid]
 
         # skip tree with no actuators.
-        if wp.static(actuation_enabled and run_affine_bias_gain and tilesize_nu != 0):
+        if wp.static(actuation_enabled and tilesize_nu != 0):
           offset_nu = m.qderiv_implicit_offset_nu[leveladr + nodeid]
           actuator_moment_tile = wp.tile_load(
             d.actuator_moment[worldid],
@@ -361,8 +359,8 @@ def implicit(m: Model, d: Data) -> Data:
       )
 
   # we reuse qM_integration to store qDeriv and then update in-place with qM
-  if passive_enabled or (actuation_enabled and m.actuator_affine_bias_gain):
-    if actuation_enabled and m.actuator_affine_bias_gain:
+  if passive_enabled or actuation_enabled:
+    if actuation_enabled:
       wp.launch(
         actuator_bias_gain_vel,
         dim=(d.nworld, m.nu),
