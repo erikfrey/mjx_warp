@@ -86,7 +86,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     for i in range(len(tile_corners)):
       tile_beg = tile_corners[i]
       tile_end = mjm.nv if i == len(tile_corners) - 1 else tile_corners[i + 1]
-      tiles.setdefault((tile_end - tile_beg), []).append((tile_beg))
+      tiles.setdefault(tile_end - tile_beg, []).append(tile_beg)
     qLD_tile = np.concatenate([tiles[sz] for sz in sorted(tiles.keys())])
     tile_off = [0] + [len(tiles[sz]) for sz in sorted(tiles.keys())]
     qLD_tileadr = np.cumsum(tile_off)[:-1]
