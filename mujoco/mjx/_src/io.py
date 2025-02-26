@@ -116,9 +116,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
       tile_end = mjm.nv if i == len(tile_corners) - 1 else tile_corners[i + 1]
       tree = int(tree_id[i])
       act_num = acts_per_tree[tree]
-      if act_num > 0:
-        tiles.setdefault((tile_end - tile_beg, act_num), []).append((tile_beg, act_beg))
-        act_beg += act_num
+      tiles.setdefault((tile_end - tile_beg, act_num), []).append((tile_beg, act_beg))
+      act_beg += act_num
 
     sorted_keys = sorted(tiles.keys())
     qderiv_implicit_offset_nv = [t[0] for key in sorted_keys for t in tiles.get(key, [])]
@@ -127,7 +126,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qderiv_implicit_tileadr = np.cumsum(tile_off)[:-1] # offset
     qderiv_implicit_tilesize_nv = np.array([a[0] for a in sorted_keys]) # for this level
     qderiv_implicit_tilesize_nu = np.array([int(a[1]) for a in sorted_keys]) # for this level
-
 
   m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
   m.qLD_update_treeadr = wp.array(
@@ -190,7 +188,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.actuator_dyntype = wp.array(mjm.actuator_dyntype, dtype=wp.int32, ndim=1)
   m.actuator_dynprm = wp.array(mjm.actuator_dynprm, dtype=types.vec10f, ndim=1)
 
-  # allows us to skip a lot of code in implicit integration
+  # short-circuiting here allows us to skip a lot of code in implicit integration
   m.actuator_affine_bias_gain = bool(
     np.any(mjm.actuator_biastype == types.BiasType.AFFINE.value)
     or np.any(mjm.actuator_gaintype == types.GainType.AFFINE.value)

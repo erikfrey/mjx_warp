@@ -287,12 +287,12 @@ def implicit(m: Model, d: Data) -> Data:
         worldid, nodeid = wp.tid()
         offset_nv = m.qderiv_implicit_offset_nv[leveladr + nodeid]
 
-        if wp.static(actuation_enabled and run_affine_bias_gain):
+        # skip tree with no actuators.
+        if wp.static(actuation_enabled and run_affine_bias_gain and tilesize_nu != 0):
           offset_nu = m.qderiv_implicit_offset_nu[leveladr + nodeid]
           actuator_moment_tile = wp.tile_load(
             d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv), offset=(offset_nu, offset_nv)
           )
-
           zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
           vel_tile = wp.tile_load(d.act_vel_integration[worldid], shape=(tilesize_nu), offset=offset_nu)
           diag = wp.tile_diag_add(zeros, vel_tile)
