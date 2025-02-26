@@ -16,7 +16,9 @@
 from typing import Optional
 
 import warp as wp
+import mujoco
 
+from . import constraint
 from . import math
 from . import passive
 from . import smooth
@@ -30,6 +32,7 @@ from .types import JointType
 from .types import DynType
 from .types import BiasType
 from .types import GainType
+from .support import xfrc_accumulate
 
 
 def _advance(
@@ -387,7 +390,7 @@ def fwd_position(m: Model, d: Data):
   smooth.crb(m, d)
   smooth.factor_m(m, d)
   # TODO(team): collision_driver.collision
-  # TODO(team): constraint.make_constraint
+  constraint.make_constraint(m, d)
   smooth.transmission(m, d)
 
 
@@ -473,19 +476,26 @@ def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
 
   qfrc_applied = d.qfrc_applied
-  # TODO(team) += support.xfrc_accumulate(m, d)
+  qfrc_accumulated = xfrc_accumulate(m, d)
 
   @wp.kernel
-  def _qfrc_smooth(d: Data, qfrc_applied: wp.array(ndim=2, dtype=wp.float32)):
+  def _qfrc_smooth(
+    d: Data,
+    qfrc_applied: wp.array(ndim=2, dtype=wp.float32),
+    qfrc_accumulated: wp.array(ndim=2, dtype=wp.float32),
+  ):
     worldid, dofid = wp.tid()
     d.qfrc_smooth[worldid, dofid] = (
       d.qfrc_passive[worldid, dofid]
       - d.qfrc_bias[worldid, dofid]
       + d.qfrc_actuator[worldid, dofid]
       + qfrc_applied[worldid, dofid]
+      + qfrc_accumulated[worldid, dofid]
     )
 
-  wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
+  wp.launch(
+    _qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied, qfrc_accumulated]
+  )
 
   smooth.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
 
@@ -505,3 +515,19 @@ def forward(m: Model, d: Data):
   wp.copy(d.qacc, d.qacc_smooth)
 
   # TODO(team): solver.solve
+
+
+def step(m: Model, d: Data):
+  """Advance simulation."""
+  forward(m, d)
+
+  if m.opt.integrator == mujoco.mjtIntegrator.mjINT_EULER:
+    euler(m, d)
+  elif m.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4:
+    # TODO(team): rungekutta4
+    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
+  elif m.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICITFAST:
+    # TODO(team): implicit
+    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
+  else:
+    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")

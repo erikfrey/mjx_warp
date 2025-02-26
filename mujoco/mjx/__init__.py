@@ -15,6 +15,7 @@
 
 """Public API for MJX."""
 
+from ._src.constraint import make_constraint
 from ._src.forward import euler
 from ._src.forward import forward
 from ._src.forward import implicit
@@ -22,6 +23,7 @@ from ._src.forward import fwd_actuation
 from ._src.forward import fwd_acceleration
 from ._src.forward import fwd_position
 from ._src.forward import fwd_velocity
+from ._src.forward import step
 from ._src.io import make_data
 from ._src.io import put_data
 from ._src.io import put_model
@@ -35,5 +37,7 @@ from ._src.smooth import rne
 from ._src.smooth import solve_m
 from ._src.smooth import transmission
 from ._src.support import is_sparse
+from ._src.support import mul_m
+from ._src.support import xfrc_accumulate
 from ._src.test_util import benchmark
 from ._src.types import *
