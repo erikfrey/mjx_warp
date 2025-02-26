@@ -17,9 +17,9 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import numpy as np
 import mujoco
 from mujoco import mjx
+import numpy as np
 import warp as wp
 
 wp.config.verify_cuda = True
