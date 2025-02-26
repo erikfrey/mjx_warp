@@ -60,6 +60,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   qLD_tile = np.empty(shape=(0,), dtype=int)
   qLD_tileadr = np.empty(shape=(0,), dtype=int)
   qLD_tilesize = np.empty(shape=(0,), dtype=int)
+  qLD_tile_act = np.empty(shape=(0,), dtype=int)
+  qLD_tilesize_nu = np.empty(shape=(0,), dtype=int)
 
   if support.is_sparse(mjm):
     # qLD_update_tree has dof tree ordering of qLD updates for sparse factor m
@@ -81,8 +83,10 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   else:
     # how many actuators for each tree
     tree = mjm.body_treeid[mjm.jnt_bodyid[mjm.actuator_trnid[:, 0]]]
-    ids, counts = np.unique(tree, return_counts=True)
-    acts_per_tree = dict(zip(ids, counts))
+
+    max = np.max(tree)
+    counts, ids = np.histogram(tree, bins=np.arange(0, max + 2))
+    acts_per_tree = dict(zip([int(i) for i in ids], [int(i) for i in counts]))
 
     # qLD_tile has the dof id of each tile in qLD for dense factor m
     # qLD_tileadr contains starting index in qLD_tile of each tile group
@@ -94,7 +98,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     for i in range(len(tile_corners)):
       tile_beg = tile_corners[i]
       tile_end = mjm.nv if i == len(tile_corners) - 1 else tile_corners[i + 1]
-      act_num = acts_per_tree[tree_id[i]]
+      tree = int(tree_id[i])
+      act_num = acts_per_tree[tree]
       tiles.setdefault((tile_end - tile_beg, act_num), []).append((tile_beg, act_beg))
       act_beg += act_num
 
