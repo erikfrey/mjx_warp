@@ -286,9 +286,9 @@ def implicit(m: Model, d: Data) -> Data:
       ):
         worldid, nodeid = wp.tid()
         offset_nv = m.qLD_tile[leveladr + nodeid]
-        offset_nu = m.qLD_tile_act[leveladr + nodeid]
 
         if wp.static(actuation_enabled and run_affine_bias_gain):
+          offset_nu = m.qLD_tile_act[leveladr + nodeid]
           actuator_moment_tile = wp.tile_load(
             d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv), offset=(offset_nu, offset_nv)
           )
