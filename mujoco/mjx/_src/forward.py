@@ -285,10 +285,10 @@ def implicit(m: Model, d: Data) -> Data:
         m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
       ):
         worldid, nodeid = wp.tid()
-        offset_nv = m.qLD_tile[leveladr + nodeid]
+        offset_nv = m.qderiv_implicit_offset_nv[leveladr + nodeid]
 
         if wp.static(actuation_enabled and run_affine_bias_gain):
-          offset_nu = m.qLD_tile_act[leveladr + nodeid]
+          offset_nu = m.qderiv_implicit_offset_nu[leveladr + nodeid]
           actuator_moment_tile = wp.tile_load(
             d.actuator_moment[worldid], shape=(tilesize_nu, tilesize_nv), offset=(offset_nu, offset_nv)
           )
@@ -325,13 +325,14 @@ def implicit(m: Model, d: Data) -> Data:
         block_dim=block_dim,
       )
     
-    qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
-    qLD_tilesize_nu = m.qLD_tilesize_nu.numpy()
+    qderiv_tilesize_nv = m.qderiv_implicit_tilesize_nv.numpy()
+    qderiv_tilesize_nu = m.qderiv_implicit_tilesize_nu.numpy()
+    qderiv_tileadr = m.qderiv_implicit_tileadr.numpy()
 
-    for i in range(len(qLD_tileadr)):
-      beg = qLD_tileadr[i]
-      end = m.qLD_tile.shape[0] if i == len(qLD_tileadr) - 1 else qLD_tileadr[i + 1]
-      qderiv_actuator_damping_tiled(beg, end - beg, int(qLD_tilesize[i]), int(qLD_tilesize_nu[i]))
+    for i in range(len(qderiv_tileadr)):
+      beg = qderiv_tileadr[i]
+      end = m.qLD_tile.shape[0] if i == len(qderiv_tileadr) - 1 else qderiv_tileadr[i + 1]
+      qderiv_actuator_damping_tiled(beg, end - beg, int(qderiv_tilesize_nv[i]), int(qderiv_tilesize_nu[i]))
 
   # we reuse qM_integration to store qDeriv and then update in-place with qM
   if passive_enabled or (actuation_enabled and m.actuator_affine_bias_gain):

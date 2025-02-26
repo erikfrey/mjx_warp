@@ -151,7 +151,7 @@ class ImplicitIntegratorTest(parameterized.TestCase):
   def _load(self, fname: str, disableFlags: int):
     path = epath.resource_path("mujoco.mjx") / "test_data" / fname
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
-    mjm.opt.jacobian = False
+    mjm.opt.jacobian = 0
     mjm.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
     mjm.opt.disableflags = mjm.opt.disableflags | disableFlags
     mjm.actuator_gainprm[:, 2] = np.random.normal(

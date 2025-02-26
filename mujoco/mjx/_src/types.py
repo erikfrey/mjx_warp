@@ -176,6 +176,11 @@ class Model:
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
   body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qderiv_implicit_offset_nv: wp.array(dtype=wp.int32, ndim=1)
+  qderiv_implicit_offset_nu: wp.array(dtype=wp.int32, ndim=1)
+  qderiv_implicit_tileadr: wp.array(dtype=wp.int32, ndim=1, device="cpu")
+  qderiv_implicit_tilesize_nv: wp.array(dtype=wp.int32, ndim=1, device="cpu")
+  qderiv_implicit_tilesize_nu: wp.array(dtype=wp.int32, ndim=1, device="cpu")
   qLD_update_tree: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
   qLD_update_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_tile: wp.array(dtype=wp.int32, ndim=1)  # warp only
