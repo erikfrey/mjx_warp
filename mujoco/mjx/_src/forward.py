@@ -358,7 +358,6 @@ def implicit(m: Model, d: Data) -> Data:
         beg, end - beg, int(qderiv_tilesize_nv[i]), int(qderiv_tilesize_nu[i])
       )
 
-  # we reuse qM_integration to store qDeriv and then update in-place with qM
   if passive_enabled or actuation_enabled:
     if actuation_enabled:
       wp.launch(
