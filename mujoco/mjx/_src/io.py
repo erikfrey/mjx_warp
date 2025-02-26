@@ -120,12 +120,20 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
       act_beg += act_num
 
     sorted_keys = sorted(tiles.keys())
-    qderiv_implicit_offset_nv = [t[0] for key in sorted_keys for t in tiles.get(key, [])]
-    qderiv_implicit_offset_nu = [t[1] for key in sorted_keys for t in tiles.get(key, [])]
+    qderiv_implicit_offset_nv = [
+      t[0] for key in sorted_keys for t in tiles.get(key, [])
+    ]
+    qderiv_implicit_offset_nu = [
+      t[1] for key in sorted_keys for t in tiles.get(key, [])
+    ]
     tile_off = [0] + [len(tiles[sz]) for sz in sorted(tiles.keys())]
-    qderiv_implicit_tileadr = np.cumsum(tile_off)[:-1] # offset
-    qderiv_implicit_tilesize_nv = np.array([a[0] for a in sorted_keys]) # for this level
-    qderiv_implicit_tilesize_nu = np.array([int(a[1]) for a in sorted_keys]) # for this level
+    qderiv_implicit_tileadr = np.cumsum(tile_off)[:-1]  # offset
+    qderiv_implicit_tilesize_nv = np.array(
+      [a[0] for a in sorted_keys]
+    )  # for this level
+    qderiv_implicit_tilesize_nu = np.array(
+      [int(a[1]) for a in sorted_keys]
+    )  # for this level
 
   m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
   m.qLD_update_treeadr = wp.array(
@@ -134,11 +142,21 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qLD_tile = wp.array(qLD_tile, dtype=wp.int32, ndim=1)
   m.qLD_tileadr = wp.array(qLD_tileadr, dtype=wp.int32, ndim=1, device="cpu")
   m.qLD_tilesize = wp.array(qLD_tilesize, dtype=wp.int32, ndim=1, device="cpu")
-  m.qderiv_implicit_offset_nv = wp.array(qderiv_implicit_offset_nv, dtype=wp.int32, ndim=1)
-  m.qderiv_implicit_offset_nu = wp.array(qderiv_implicit_offset_nu, dtype=wp.int32, ndim=1)
-  m.qderiv_implicit_tileadr = wp.array(qderiv_implicit_tileadr, dtype=wp.int32, ndim=1, device="cpu")
-  m.qderiv_implicit_tilesize_nv = wp.array(qderiv_implicit_tilesize_nv, dtype=wp.int32, ndim=1, device="cpu")
-  m.qderiv_implicit_tilesize_nu = wp.array(qderiv_implicit_tilesize_nu, dtype=wp.int32, ndim=1, device="cpu")
+  m.qderiv_implicit_offset_nv = wp.array(
+    qderiv_implicit_offset_nv, dtype=wp.int32, ndim=1
+  )
+  m.qderiv_implicit_offset_nu = wp.array(
+    qderiv_implicit_offset_nu, dtype=wp.int32, ndim=1
+  )
+  m.qderiv_implicit_tileadr = wp.array(
+    qderiv_implicit_tileadr, dtype=wp.int32, ndim=1, device="cpu"
+  )
+  m.qderiv_implicit_tilesize_nv = wp.array(
+    qderiv_implicit_tilesize_nv, dtype=wp.int32, ndim=1, device="cpu"
+  )
+  m.qderiv_implicit_tilesize_nu = wp.array(
+    qderiv_implicit_tilesize_nu, dtype=wp.int32, ndim=1, device="cpu"
+  )
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)

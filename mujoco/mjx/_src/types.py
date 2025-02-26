@@ -186,8 +186,8 @@ class Model:
   qLD_tile: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_tileadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_tilesize: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qLD_tile_act: wp.array(dtype=wp.int32, ndim=1) # warp only
-  qLD_tilesize_nu: wp.array(dtype=wp.int32, ndim=1, device="cpu") # warp only
+  qLD_tile_act: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qLD_tilesize_nu: wp.array(dtype=wp.int32, ndim=1, device="cpu")  # warp only
   body_dofadr: wp.array(dtype=wp.int32, ndim=1)
   body_dofnum: wp.array(dtype=wp.int32, ndim=1)
   body_jntadr: wp.array(dtype=wp.int32, ndim=1)

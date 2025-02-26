@@ -665,24 +665,23 @@ def _factor_solve_i_dense(m: Model, d: Data, M: array3df, x: array2df, y: array2
   block_dim = 32
 
   def tile_cholesky(adr: int, size: int, tilesize: int):
-
     @wp.kernel
     def cholesky(m: Model, leveladr: int, M: array3df, x: array2df, y: array2df):
-        worldid, nodeid = wp.tid()
-        dofid = m.qLD_tile[leveladr + nodeid]
-        M_tile = wp.tile_load(
-          M[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
-        )
-        y_slice = wp.tile_load(y[worldid], shape=(tilesize,), offset=(dofid,))
+      worldid, nodeid = wp.tid()
+      dofid = m.qLD_tile[leveladr + nodeid]
+      M_tile = wp.tile_load(
+        M[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      )
+      y_slice = wp.tile_load(y[worldid], shape=(tilesize,), offset=(dofid,))
 
-        L_tile = wp.tile_cholesky(M_tile)
-        x_slice = wp.tile_cholesky_solve(L_tile, y_slice)
-        wp.tile_store(x[worldid], x_slice, offset=(dofid,))
+      L_tile = wp.tile_cholesky(M_tile)
+      x_slice = wp.tile_cholesky_solve(L_tile, y_slice)
+      wp.tile_store(x[worldid], x_slice, offset=(dofid,))
 
     wp.launch_tiled(
-        cholesky, dim=(d.nworld, size), inputs=[m, adr, M, x, y], block_dim=block_dim
-      )
-  
+      cholesky, dim=(d.nworld, size), inputs=[m, adr, M, x, y], block_dim=block_dim
+    )
+
   qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
 
   for i in range(len(qLD_tileadr)):
