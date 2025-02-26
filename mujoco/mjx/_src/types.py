@@ -196,8 +196,12 @@ class Model:
   qderiv_implicit_offset_nv: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qderiv_implicit_offset_nu: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qderiv_implicit_tileadr: wp.array(dtype=wp.int32, ndim=1, device="cpu")  # warp only
-  qderiv_implicit_tilesize_nv: wp.array(dtype=wp.int32, ndim=1, device="cpu")  # warp only
-  qderiv_implicit_tilesize_nu: wp.array(dtype=wp.int32, ndim=1, device="cpu")  # warp only
+  qderiv_implicit_tilesize_nv: wp.array(
+    dtype=wp.int32, ndim=1, device="cpu"
+  )  # warp only
+  qderiv_implicit_tilesize_nu: wp.array(
+    dtype=wp.int32, ndim=1, device="cpu"
+  )  # warp only
   qM_i: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_j: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_madr_ij: wp.array(dtype=wp.int32, ndim=1)  # warp only

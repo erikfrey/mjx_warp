@@ -240,7 +240,9 @@ def implicit(m: Model, d: Data) -> Data:
 
   # compile-time constants
   passive_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
-  actuation_enabled = (not m.opt.disableflags & DisableBit.ACTUATION.value) and m.actuator_affine_bias_gain
+  actuation_enabled = (
+    not m.opt.disableflags & DisableBit.ACTUATION.value
+  ) and m.actuator_affine_bias_gain
 
   @wp.kernel
   def actuator_bias_gain_vel(m: Model, d: Data):
