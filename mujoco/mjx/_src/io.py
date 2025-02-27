@@ -125,6 +125,48 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qLD_tileadr = np.cumsum(tile_off)[:-1]
     qLD_tilesize = np.array(sorted(tiles.keys()))
 
+  # tiles for implicit integration - needs nu + nv tile size and offset
+  qderiv_implicit_offset_nv = np.empty(shape=(0,), dtype=int)
+  qderiv_implicit_offset_nu = np.empty(shape=(0,), dtype=int)
+  qderiv_implicit_tileadr = np.empty(shape=(0,), dtype=int)
+  qderiv_implicit_tilesize_nv = np.empty(shape=(0,), dtype=int)
+  qderiv_implicit_tilesize_nu = np.empty(shape=(0,), dtype=int)
+
+  if not support.is_sparse(mjm):
+    # how many actuators for each tree
+    tree_id = mjm.dof_treeid[tile_corners]
+    num_trees = int(np.max(tree_id))
+    tree = mjm.body_treeid[mjm.jnt_bodyid[mjm.actuator_trnid[:, 0]]]
+    counts, ids = np.histogram(tree, bins=np.arange(0, num_trees + 2))
+    acts_per_tree = dict(zip([int(i) for i in ids], [int(i) for i in counts]))
+
+    tile_corners = [i for i in range(mjm.nv) if mjm.dof_parentid[i] == -1]
+    tiles = {}
+    act_beg = 0
+    for i in range(len(tile_corners)):
+      tile_beg = tile_corners[i]
+      tile_end = mjm.nv if i == len(tile_corners) - 1 else tile_corners[i + 1]
+      tree = int(tree_id[i])
+      act_num = acts_per_tree[tree]
+      tiles.setdefault((tile_end - tile_beg, act_num), []).append((tile_beg, act_beg))
+      act_beg += act_num
+
+    sorted_keys = sorted(tiles.keys())
+    qderiv_implicit_offset_nv = [
+      t[0] for key in sorted_keys for t in tiles.get(key, [])
+    ]
+    qderiv_implicit_offset_nu = [
+      t[1] for key in sorted_keys for t in tiles.get(key, [])
+    ]
+    tile_off = [0] + [len(tiles[sz]) for sz in sorted(tiles.keys())]
+    qderiv_implicit_tileadr = np.cumsum(tile_off)[:-1]  # offset
+    qderiv_implicit_tilesize_nv = np.array(
+      [a[0] for a in sorted_keys]
+    )  # for this level
+    qderiv_implicit_tilesize_nu = np.array(
+      [int(a[1]) for a in sorted_keys]
+    )  # for this level
+
   m.qM_i = wp.array(qM_i, dtype=wp.int32, ndim=1)
   m.qM_j = wp.array(qM_j, dtype=wp.int32, ndim=1)
   m.qM_madr_ij = wp.array(qM_madr_ij, dtype=wp.int32, ndim=1)
@@ -135,6 +177,21 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qLD_tile = wp.array(qLD_tile, dtype=wp.int32, ndim=1)
   m.qLD_tileadr = wp.array(qLD_tileadr, dtype=wp.int32, ndim=1, device="cpu")
   m.qLD_tilesize = wp.array(qLD_tilesize, dtype=wp.int32, ndim=1, device="cpu")
+  m.qderiv_implicit_offset_nv = wp.array(
+    qderiv_implicit_offset_nv, dtype=wp.int32, ndim=1
+  )
+  m.qderiv_implicit_offset_nu = wp.array(
+    qderiv_implicit_offset_nu, dtype=wp.int32, ndim=1
+  )
+  m.qderiv_implicit_tileadr = wp.array(
+    qderiv_implicit_tileadr, dtype=wp.int32, ndim=1, device="cpu"
+  )
+  m.qderiv_implicit_tilesize_nv = wp.array(
+    qderiv_implicit_tilesize_nv, dtype=wp.int32, ndim=1, device="cpu"
+  )
+  m.qderiv_implicit_tilesize_nu = wp.array(
+    qderiv_implicit_tilesize_nu, dtype=wp.int32, ndim=1, device="cpu"
+  )
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
@@ -186,7 +243,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.actuator_ctrlrange = wp.array(mjm.actuator_ctrlrange, dtype=wp.vec2, ndim=1)
   m.actuator_forcelimited = wp.array(mjm.actuator_forcelimited, dtype=wp.bool, ndim=1)
   m.actuator_forcerange = wp.array(mjm.actuator_forcerange, dtype=wp.vec2, ndim=1)
+  m.actuator_gaintype = wp.array(mjm.actuator_gaintype, dtype=wp.int32, ndim=1)
   m.actuator_gainprm = wp.array(mjm.actuator_gainprm, dtype=wp.float32, ndim=2)
+  m.actuator_biastype = wp.array(mjm.actuator_biastype, dtype=wp.int32, ndim=1)
   m.actuator_biasprm = wp.array(mjm.actuator_biasprm, dtype=wp.float32, ndim=2)
   m.actuator_gear = wp.array(mjm.actuator_gear, dtype=wp.spatial_vector, ndim=1)
   m.actuator_actlimited = wp.array(mjm.actuator_actlimited, dtype=wp.bool, ndim=1)
@@ -194,6 +253,12 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.actuator_actadr = wp.array(mjm.actuator_actadr, dtype=wp.int32, ndim=1)
   m.actuator_dyntype = wp.array(mjm.actuator_dyntype, dtype=wp.int32, ndim=1)
   m.actuator_dynprm = wp.array(mjm.actuator_dynprm, dtype=types.vec10f, ndim=1)
+
+  # short-circuiting here allows us to skip a lot of code in implicit integration
+  m.actuator_affine_bias_gain = bool(
+    np.any(mjm.actuator_biastype == types.BiasType.AFFINE.value)
+    or np.any(mjm.actuator_gaintype == types.GainType.AFFINE.value)
+  )
 
   return m
 
@@ -273,6 +338,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Da
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.ctrl = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
   d.efc_J = wp.zeros((njmax, mjm.nv), dtype=wp.float32)
   d.efc_D = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_pos = wp.zeros((njmax,), dtype=wp.float32)
@@ -282,12 +348,14 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Da
   d.efc_worldid = wp.zeros((njmax,), dtype=wp.int32)
 
   d.xfrc_applied = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
+
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qM_integration = wp.zeros_like(d.qM)
   d.qLD_integration = wp.zeros_like(d.qLD)
   d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
+  d.act_vel_integration = wp.zeros_like(d.ctrl)
 
   # the result of the broadphase gets stored in this array
   d.max_num_overlaps_per_world = (
@@ -439,6 +507,7 @@ def put_data(
   d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
+  d.ctrl = wp.array(tile(mjd.ctrl), dtype=wp.float32, ndim=2)
   d.contact.dist = wp.array(tile(mjd.contact.dist), dtype=wp.float32, ndim=2)
   d.contact.pos = wp.array(tile(mjd.contact.pos), dtype=wp.vec3f, ndim=2)
   d.contact.frame = wp.array(tile(mjd.contact.frame), dtype=wp.mat33f, ndim=2)
@@ -464,6 +533,7 @@ def put_data(
   d.qM_integration = wp.zeros_like(d.qM)
   d.qLD_integration = wp.zeros_like(d.qLD)
   d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
+  d.act_vel_integration = wp.zeros_like(d.ctrl)
 
   # the result of the broadphase gets stored in this array
   d.max_num_overlaps_per_world = mjm.ngeom * (mjm.ngeom - 1) // 2

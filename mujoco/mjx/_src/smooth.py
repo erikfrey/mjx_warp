@@ -658,3 +658,41 @@ def solve_LD(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2
 def solve_m(m: Model, d: Data, x: array2df, y: array2df):
   """Computes backsubstitution: x = qLD * y."""
   solve_LD(m, d, d.qLD, d.qLDiagInv, x, y)
+
+
+def _factor_solve_i_dense(m: Model, d: Data, M: array3df, x: array2df, y: array2df):
+  # TODO(team): develop heuristic for block dim, or make configurable
+  block_dim = 32
+
+  def tile_cholesky(adr: int, size: int, tilesize: int):
+    @wp.kernel
+    def cholesky(m: Model, leveladr: int, M: array3df, x: array2df, y: array2df):
+      worldid, nodeid = wp.tid()
+      dofid = m.qLD_tile[leveladr + nodeid]
+      M_tile = wp.tile_load(
+        M[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      )
+      y_slice = wp.tile_load(y[worldid], shape=(tilesize,), offset=(dofid,))
+
+      L_tile = wp.tile_cholesky(M_tile)
+      x_slice = wp.tile_cholesky_solve(L_tile, y_slice)
+      wp.tile_store(x[worldid], x_slice, offset=(dofid,))
+
+    wp.launch_tiled(
+      cholesky, dim=(d.nworld, size), inputs=[m, adr, M, x, y], block_dim=block_dim
+    )
+
+  qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
+
+  for i in range(len(qLD_tileadr)):
+    beg = qLD_tileadr[i]
+    end = m.qLD_tile.shape[0] if i == len(qLD_tileadr) - 1 else qLD_tileadr[i + 1]
+    tile_cholesky(beg, end - beg, int(qLD_tilesize[i]))
+
+
+def factor_solve_i(m, d, M, L, D, x, y):
+  if m.opt.is_sparse:
+    _factor_i_sparse(m, d, M, L, D)
+    _solve_LD_sparse(m, d, L, D, x, y)
+  else:
+    _factor_solve_i_dense(m, d, M, x, y)

@@ -31,6 +31,8 @@ from .types import MJ_MINVAL
 from .types import DisableBit
 from .types import JointType
 from .types import DynType
+from .types import BiasType
+from .types import GainType
 from .support import xfrc_accumulate
 
 
@@ -199,15 +201,175 @@ def euler(m: Model, d: Data) -> Data:
 
   if not m.opt.disableflags & DisableBit.EULERDAMP.value:
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
-    smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
-    smooth.solve_LD(
+    smooth.factor_solve_i(
       m,
       d,
+      d.qM_integration,
       d.qLD_integration,
       d.qLDiagInv_integration,
       d.qacc_integration,
       d.qfrc_integration,
     )
+    return _advance(m, d, d.act_dot, d.qacc_integration)
+
+  return _advance(m, d, d.act_dot, d.qacc)
+
+
+def implicit(m: Model, d: Data) -> Data:
+  """Integrates fully implicit in velocity."""
+
+  # optimization comments (AD)
+  # I went from small kernels for every step to a relatively big single
+  # kernel using tile API because it kept improving performance -
+  # 30M to 50M FPS on an A6000.
+  #
+  # The main benefit is reduced global memory roundtrips, but I assume
+  # there is also some benefit to loading data as early as possible.
+  #
+  # I further tried fusing in the cholesky factor/solve but the high
+  # storage requirements led to low occupancy and thus worse performance.
+  #
+  # The actuator_bias_gain_vel kernel could theoretically be fused in as well,
+  # but it's pretty clean straight-line code that loads a lot of data but
+  # only stores one array, so I think the benefit of keeping that one on-chip
+  # is likely not worth it compared to the compromises we're making with tile API.
+  # It would also need a different data layout for the biasprm/gainprm arrays
+  # to be tileable.
+
+  # assumptions
+  assert not m.opt.is_sparse  # unsupported
+
+  # compile-time constants
+  passive_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
+  actuation_enabled = (
+    not m.opt.disableflags & DisableBit.ACTUATION.value
+  ) and m.actuator_affine_bias_gain
+
+  @wp.kernel
+  def actuator_bias_gain_vel(m: Model, d: Data):
+    worldid, actid = wp.tid()
+
+    bias_vel = 0.0
+    gain_vel = 0.0
+
+    actuator_biastype = m.actuator_biastype[actid]
+    actuator_gaintype = m.actuator_gaintype[actid]
+    actuator_dyntype = m.actuator_dyntype[actid]
+
+    if actuator_biastype == wp.static(BiasType.AFFINE.value):
+      bias_vel = m.actuator_biasprm[actid, 2]
+
+    if actuator_gaintype == wp.static(GainType.AFFINE.value):
+      gain_vel = m.actuator_gainprm[actid, 2]
+
+    ctrl = d.ctrl[worldid, actid]
+
+    if actuator_dyntype != wp.static(DynType.NONE.value):
+      ctrl = d.act[worldid, actid]
+
+    d.act_vel_integration[worldid, actid] = bias_vel + gain_vel * ctrl
+
+  def qderiv_actuator_damping_fused(
+    m: Model, d: Data, damping: wp.array(dtype=wp.float32)
+  ):
+    if actuation_enabled:
+      block_dim = 64
+    else:
+      block_dim = 256
+
+    @wp.func
+    def subtract_multiply(x: wp.float32, y: wp.float32):
+      return x - y * wp.static(m.opt.timestep)
+
+    def qderiv_actuator_damping_tiled(
+      adr: int, size: int, tilesize_nv: int, tilesize_nu: int
+    ):
+      @wp.kernel
+      def qderiv_actuator_fused_kernel(
+        m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
+      ):
+        worldid, nodeid = wp.tid()
+        offset_nv = m.qderiv_implicit_offset_nv[leveladr + nodeid]
+
+        # skip tree with no actuators.
+        if wp.static(actuation_enabled and tilesize_nu != 0):
+          offset_nu = m.qderiv_implicit_offset_nu[leveladr + nodeid]
+          actuator_moment_tile = wp.tile_load(
+            d.actuator_moment[worldid],
+            shape=(tilesize_nu, tilesize_nv),
+            offset=(offset_nu, offset_nv),
+          )
+          zeros = wp.tile_zeros(shape=(tilesize_nu, tilesize_nu), dtype=wp.float32)
+          vel_tile = wp.tile_load(
+            d.act_vel_integration[worldid], shape=(tilesize_nu), offset=offset_nu
+          )
+          diag = wp.tile_diag_add(zeros, vel_tile)
+          actuator_moment_T = wp.tile_transpose(actuator_moment_tile)
+          amTVel = wp.tile_matmul(actuator_moment_T, diag)
+          qderiv_tile = wp.tile_matmul(amTVel, actuator_moment_tile)
+        else:
+          qderiv_tile = wp.tile_zeros(
+            shape=(tilesize_nv, tilesize_nv), dtype=wp.float32
+          )
+
+        if wp.static(passive_enabled):
+          dof_damping = wp.tile_load(damping, shape=tilesize_nv, offset=offset_nv)
+          negative = wp.neg(dof_damping)
+          qderiv_tile = wp.tile_diag_add(qderiv_tile, negative)
+
+        # add to qM
+        qM_tile = wp.tile_load(
+          d.qM[worldid], shape=(tilesize_nv, tilesize_nv), offset=(offset_nv, offset_nv)
+        )
+        qderiv_tile = wp.tile_map(subtract_multiply, qM_tile, qderiv_tile)
+        wp.tile_store(
+          d.qM_integration[worldid], qderiv_tile, offset=(offset_nv, offset_nv)
+        )
+
+        # sum qfrc
+        qfrc_smooth_tile = wp.tile_load(
+          d.qfrc_smooth[worldid], shape=tilesize_nv, offset=offset_nv
+        )
+        qfrc_constraint_tile = wp.tile_load(
+          d.qfrc_constraint[worldid], shape=tilesize_nv, offset=offset_nv
+        )
+        qfrc_combined = wp.add(qfrc_smooth_tile, qfrc_constraint_tile)
+        wp.tile_store(d.qfrc_integration[worldid], qfrc_combined, offset=offset_nv)
+
+      wp.launch_tiled(
+        qderiv_actuator_fused_kernel,
+        dim=(d.nworld, size),
+        inputs=[m, d, damping, adr],
+        block_dim=block_dim,
+      )
+
+    qderiv_tilesize_nv = m.qderiv_implicit_tilesize_nv.numpy()
+    qderiv_tilesize_nu = m.qderiv_implicit_tilesize_nu.numpy()
+    qderiv_tileadr = m.qderiv_implicit_tileadr.numpy()
+
+    for i in range(len(qderiv_tileadr)):
+      beg = qderiv_tileadr[i]
+      end = (
+        m.qLD_tile.shape[0] if i == len(qderiv_tileadr) - 1 else qderiv_tileadr[i + 1]
+      )
+      qderiv_actuator_damping_tiled(
+        beg, end - beg, int(qderiv_tilesize_nv[i]), int(qderiv_tilesize_nu[i])
+      )
+
+  if passive_enabled or actuation_enabled:
+    if actuation_enabled:
+      wp.launch(
+        actuator_bias_gain_vel,
+        dim=(d.nworld, m.nu),
+        inputs=[m, d],
+      )
+
+    qderiv_actuator_damping_fused(m, d, m.dof_damping)
+
+    smooth._factor_solve_i_dense(
+      m, d, d.qM_integration, d.qacc_integration, d.qfrc_integration
+    )
+
     return _advance(m, d, d.act_dot, d.qacc_integration)
 
   return _advance(m, d, d.act_dot, d.qacc)

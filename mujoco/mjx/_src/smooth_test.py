@@ -22,9 +22,9 @@ from mujoco import mjx
 import numpy as np
 import warp as wp
 
-wp.config.verify_cuda = True
-
 from . import test_util
+
+wp.config.verify_cuda = True
 
 # tolerance for difference between MuJoCo and mjWarp smooth calculations - mostly
 # due to float precision
