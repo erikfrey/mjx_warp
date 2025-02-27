@@ -17,6 +17,7 @@
 
 # ruff: noqa: F401
 
+from ._src.collision_driver import broad_phase
 from ._src.constraint import make_constraint
 from ._src.forward import euler
 from ._src.forward import forward

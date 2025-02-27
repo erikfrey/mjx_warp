@@ -24,10 +24,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install warp-lang --pre --upgrade -f https://pypi.nvidia.com/warp-lang/
           pip install pytest
+          pip install ruff
           pip install -e .
+      - name: Format with Ruff
+        run: |
+          ruff format --check .
       - name: Lint with Ruff
         run: |
-          pip install ruff
           ruff check --output-format=github .
         continue-on-error: true
       - name: Test with pytest

@@ -357,6 +357,29 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Da
   d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
   d.act_vel_integration = wp.zeros_like(d.ctrl)
 
+  # the result of the broadphase gets stored in this array
+  d.max_num_overlaps_per_world = (
+    mjm.ngeom * (mjm.ngeom - 1) // 2
+  )  # TODO: this is a hack to estimate the maximum number of overlaps per world
+  d.broadphase_pairs = wp.zeros((nworld, d.max_num_overlaps_per_world), dtype=wp.vec2i)
+  d.result_count = wp.zeros(nworld, dtype=wp.int32)
+
+  # internal broadphase tmp arrays
+  d.boxes_sorted = wp.zeros(
+    (nworld, mjm.ngeom), dtype=wp.types.matrix(shape=(2, 3), dtype=wp.float32)
+  )
+  d.data_start = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.float32)
+  d.data_end = wp.zeros((nworld, mjm.ngeom), dtype=wp.float32)
+  d.data_indexer = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.int32)
+  d.ranges = wp.zeros((nworld, mjm.ngeom), dtype=wp.int32)
+  d.cumulative_sum = wp.zeros(nworld * mjm.ngeom, dtype=wp.int32)
+  segment_indices_list = [i * mjm.ngeom for i in range(nworld + 1)]
+  d.segment_indices = wp.array(segment_indices_list, dtype=int)
+
+  d.geom_aabb = wp.array(
+    mjm.geom_aabb, dtype=wp.types.matrix(shape=(2, 3), dtype=wp.float32), ndim=1
+  )
+
   return d
 
 
@@ -511,5 +534,26 @@ def put_data(
   d.qLD_integration = wp.zeros_like(d.qLD)
   d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
   d.act_vel_integration = wp.zeros_like(d.ctrl)
+
+  # the result of the broadphase gets stored in this array
+  d.max_num_overlaps_per_world = mjm.ngeom * (mjm.ngeom - 1) // 2
+  d.broadphase_pairs = wp.zeros((nworld, d.max_num_overlaps_per_world), dtype=wp.vec2i)
+  d.result_count = wp.zeros(nworld, dtype=wp.int32)
+
+  # internal broadphase tmp arrays
+  d.boxes_sorted = wp.zeros(
+    (nworld, mjm.ngeom), dtype=wp.types.matrix(shape=(2, 3), dtype=wp.float32)
+  )
+  d.data_start = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.float32)
+  d.data_end = wp.zeros((nworld, mjm.ngeom), dtype=wp.float32)
+  d.data_indexer = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.int32)
+  d.ranges = wp.zeros((nworld, mjm.ngeom), dtype=wp.int32)
+  d.cumulative_sum = wp.zeros(nworld * mjm.ngeom, dtype=wp.int32)
+  segment_indices_list = [i * mjm.ngeom for i in range(nworld + 1)]
+  d.segment_indices = wp.array(segment_indices_list, dtype=int)
+
+  d.geom_aabb = wp.array(
+    mjm.geom_aabb, dtype=wp.types.matrix(shape=(2, 3), dtype=wp.float32), ndim=1
+  )
 
   return d
