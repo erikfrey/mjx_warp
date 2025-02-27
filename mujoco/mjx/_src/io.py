@@ -134,13 +134,13 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
 
   if not support.is_sparse(mjm):
     # how many actuators for each tree
+    tree_id = mjm.dof_treeid[tile_corners]
+    num_trees = int(np.max(tree_id))
     tree = mjm.body_treeid[mjm.jnt_bodyid[mjm.actuator_trnid[:, 0]]]
-    max = np.max(tree)
-    counts, ids = np.histogram(tree, bins=np.arange(0, max + 2))
+    counts, ids = np.histogram(tree, bins=np.arange(0, num_trees + 2))
     acts_per_tree = dict(zip([int(i) for i in ids], [int(i) for i in counts]))
 
     tile_corners = [i for i in range(mjm.nv) if mjm.dof_parentid[i] == -1]
-    tree_id = mjm.dof_treeid[tile_corners]
     tiles = {}
     act_beg = 0
     for i in range(len(tile_corners)):
