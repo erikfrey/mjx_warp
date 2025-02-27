@@ -15,17 +15,15 @@
 
 """Tests for forward dynamics functions."""
 
-from absl.testing import absltest
-from etils import epath
 import numpy as np
 import warp as wp
-
-wp.config.verify_cuda = True
+from absl.testing import absltest
+from etils import epath
 
 import mujoco
 from mujoco import mjx
 
-from .types import DisableBit
+wp.config.verify_cuda = True
 
 # tolerance for difference between MuJoCo and MJX smooth calculations - mostly
 # due to float precision
@@ -131,7 +129,7 @@ class ForwardTest(absltest.TestCase):
   def test_disable_eulerdamp(self):
     path = epath.resource_path("mujoco.mjx") / "test_data/pendula.xml"
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
-    mjm.opt.disableflags = mjm.opt.disableflags | DisableBit.EULERDAMP.value
+    mjm.opt.disableflags = mjm.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_EULERDAMP
 
     mjd = mujoco.MjData(mjm)
     mujoco.mj_forward(mjm, mjd)
