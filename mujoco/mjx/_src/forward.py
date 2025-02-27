@@ -278,16 +278,8 @@ def implicit(m: Model, d: Data) -> Data:
       block_dim = 256
 
     @wp.func
-    def neg(x: wp.float32):
-      return -x
-
-    @wp.func
     def subtract_multiply(x: wp.float32, y: wp.float32):
       return x - y * wp.static(m.opt.timestep)
-
-    @wp.func
-    def add(x: wp.float32, y: wp.float32):
-      return x + y
 
     def qderiv_actuator_damping_tiled(
       adr: int, size: int, tilesize_nv: int, tilesize_nu: int
@@ -322,7 +314,7 @@ def implicit(m: Model, d: Data) -> Data:
 
         if wp.static(passive_enabled):
           dof_damping = wp.tile_load(damping, shape=tilesize_nv, offset=offset_nv)
-          negative = wp.tile_map(neg, dof_damping)
+          negative = wp.neg(dof_damping)
           qderiv_tile = wp.tile_diag_add(qderiv_tile, negative)
 
         # add to qM
@@ -341,7 +333,7 @@ def implicit(m: Model, d: Data) -> Data:
         qfrc_constraint_tile = wp.tile_load(
           d.qfrc_constraint[worldid], shape=tilesize_nv, offset=offset_nv
         )
-        qfrc_combined = wp.tile_map(add, qfrc_smooth_tile, qfrc_constraint_tile)
+        qfrc_combined = wp.add(qfrc_smooth_tile, qfrc_constraint_tile)
         wp.tile_store(d.qfrc_integration[worldid], qfrc_combined, offset=offset_nv)
 
       wp.launch_tiled(
