@@ -323,7 +323,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
       output_tile = wp.tile_cholesky_solve(fact_tile, input_tile)
       wp.tile_store(ctx.Mgrad[worldid], output_tile)
 
-    wp.launch_tiled(_cholesky, dim=(d.nworld,), inputs=[ctx], block_dim=256)
+    wp.launch_tiled(_cholesky, dim=(d.nworld,), inputs=[ctx], block_dim=32)
 
 
 @wp.func
