@@ -21,12 +21,12 @@ from etils import epath
 import numpy as np
 import warp as wp
 
-wp.config.verify_cuda = True
-
 import mujoco
 from mujoco import mjx
 
 from .types import DisableBit
+
+wp.config.verify_cuda = True
 
 # tolerance for difference between MuJoCo and MJX smooth calculations - mostly
 # due to float precision
