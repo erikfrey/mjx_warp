@@ -125,6 +125,31 @@ class ConeType(enum.IntEnum):
   PYRAMIDAL = mujoco.mjtCone.mjCONE_PYRAMIDAL
   ELLIPTIC = mujoco.mjtCone.mjCONE_ELLIPTIC
 
+class GeomType(enum.IntEnum):
+  """Type of geometry.
+
+  Members:
+    PLANE: plane
+    HFIELD: height field
+    SPHERE: sphere
+    CAPSULE: capsule
+    ELLIPSOID: ellipsoid
+    CYLINDER: cylinder
+    BOX: box
+    MESH: mesh
+    SDF: signed distance field
+  """
+
+  PLANE = mujoco.mjtGeom.mjGEOM_PLANE
+  HFIELD = mujoco.mjtGeom.mjGEOM_HFIELD
+  SPHERE = mujoco.mjtGeom.mjGEOM_SPHERE
+  CAPSULE = mujoco.mjtGeom.mjGEOM_CAPSULE
+  ELLIPSOID = mujoco.mjtGeom.mjGEOM_ELLIPSOID
+  CYLINDER = mujoco.mjtGeom.mjGEOM_CYLINDER
+  BOX = mujoco.mjtGeom.mjGEOM_BOX
+  MESH = mujoco.mjtGeom.mjGEOM_MESH
+  # unsupported: NGEOMTYPES, ARROW*, LINE, SKIN, LABEL, NONE
+
 
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
@@ -133,6 +158,8 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
 vec10 = vec10f
 array2df = wp.array2d(dtype=wp.float32)
 array3df = wp.array3d(dtype=wp.float32)
+
+BoxType = wp.types.matrix(shape=(2, 3), dtype=wp.float32)
 
 
 @wp.struct
@@ -241,8 +268,6 @@ class Model:
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=vec10f, ndim=1)
-  opt: Option
-
 
 @wp.struct
 class Contact:

@@ -23,6 +23,7 @@ from . import math
 from . import passive
 from . import smooth
 from . import solver
+from . import collision_driver
 
 from .types import array2df, array3df
 from .types import Model
@@ -222,7 +223,7 @@ def fwd_position(m: Model, d: Data):
   # TODO(team): smooth.tendon
   smooth.crb(m, d)
   smooth.factor_m(m, d)
-  # TODO(team): collision_driver.collision
+  collision_driver.collision(m, d)
   constraint.make_constraint(m, d)
   smooth.transmission(m, d)
 
