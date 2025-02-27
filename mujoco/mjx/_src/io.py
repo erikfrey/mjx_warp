@@ -155,8 +155,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     jnt_limited_slide_hinge_adr, dtype=wp.int32, ndim=1
   )
   m.jnt_type = wp.array(mjm.jnt_type, dtype=wp.int32, ndim=1)
-  m.jnt_solref = wp.array(mjm.jnt_solref, dtype=wp.float32, ndim=2)
-  m.jnt_solimp = wp.array(mjm.jnt_solimp, dtype=wp.float32, ndim=2)
+  m.jnt_solref = wp.array(mjm.jnt_solref, dtype=wp.vec2f, ndim=1)
+  m.jnt_solimp = wp.array(mjm.jnt_solimp, dtype=types.vec5, ndim=1)
   m.jnt_qposadr = wp.array(mjm.jnt_qposadr, dtype=wp.int32, ndim=1)
   m.jnt_dofadr = wp.array(mjm.jnt_dofadr, dtype=wp.int32, ndim=1)
   m.jnt_axis = wp.array(mjm.jnt_axis, dtype=wp.vec3, ndim=1)
@@ -198,12 +198,19 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   return m
 
 
-def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Data:
+def make_data(
+  mjm: mujoco.MjModel, nworld: int = 1, nconmax: int = -1, njmax: int = -1
+) -> types.Data:
   d = types.Data()
   d.nworld = nworld
+  d.ncon_total = wp.zeros((1,), dtype=wp.int32, ndim=1)
   d.nefc_total = wp.zeros((1,), dtype=wp.int32, ndim=1)
 
   # TODO(team): move to Model?
+  if nconmax == -1:
+    # TODO(team): heuristic for nconmax
+    nconmax = 512
+  d.nconmax = nconmax
   if njmax == -1:
     # TODO(team): heuristic for njmax
     njmax = 512
@@ -255,17 +262,18 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Da
   d.cdof_dot = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
   d.qfrc_bias = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.contact = types.Contact()
-  d.contact.dist = wp.zeros((nworld, d.ncon), dtype=wp.float32)
-  d.contact.pos = wp.zeros((nworld, d.ncon), dtype=wp.vec3f)
-  d.contact.frame = wp.zeros((nworld, d.ncon), dtype=wp.mat33f)
-  d.contact.includemargin = wp.zeros((nworld, d.ncon), dtype=wp.float32)
-  d.contact.friction = wp.zeros((nworld, d.ncon, 5), dtype=wp.float32)
-  d.contact.solref = wp.zeros((nworld, d.ncon, types.MJ_NREF), dtype=wp.float32)
-  d.contact.solreffriction = wp.zeros((nworld, d.ncon, types.MJ_NREF), dtype=wp.float32)
-  d.contact.solimp = wp.zeros((nworld, d.ncon, types.MJ_NIMP), dtype=wp.float32)
-  d.contact.dim = wp.zeros((nworld, d.ncon), dtype=wp.int32)
-  d.contact.geom = wp.zeros((nworld, d.ncon, 2), dtype=wp.int32)
-  d.contact.efc_address = wp.zeros((nworld, d.ncon), dtype=wp.int32)
+  d.contact.dist = wp.zeros((nconmax,), dtype=wp.float32)
+  d.contact.pos = wp.zeros((nconmax,), dtype=wp.vec3f)
+  d.contact.frame = wp.zeros((nconmax,), dtype=wp.mat33f)
+  d.contact.includemargin = wp.zeros((nconmax,), dtype=wp.float32)
+  d.contact.friction = wp.zeros((nconmax,), dtype=types.vec5)
+  d.contact.solref = wp.zeros((nconmax,), dtype=wp.vec2f)
+  d.contact.solreffriction = wp.zeros((nconmax,), dtype=wp.vec2f)
+  d.contact.solimp = wp.zeros((nconmax,), dtype=types.vec5)
+  d.contact.dim = wp.zeros((nconmax,), dtype=wp.int32)
+  d.contact.geom = wp.zeros((nconmax,), dtype=wp.vec2i)
+  d.contact.efc_address = wp.zeros((nconmax,), dtype=wp.int32)
+  d.contact.worldid = wp.zeros((nconmax,), dtype=wp.int32)
   d.qfrc_passive = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_spring = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_damper = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -316,13 +324,22 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Da
 
 
 def put_data(
-  mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, njmax: int = -1
+  mjm: mujoco.MjModel,
+  mjd: mujoco.MjData,
+  nworld: int = 1,
+  nconmax: int = -1,
+  njmax: int = -1,
 ) -> types.Data:
   d = types.Data()
   d.nworld = nworld
+  d.ncon_total = wp.array([mjd.ncon * nworld], dtype=wp.int32, ndim=1)
   d.nefc_total = wp.array([mjd.nefc * nworld], dtype=wp.int32, ndim=1)
 
   # TODO(team): move to Model?
+  if nconmax == -1:
+    # TODO(team): heuristic for nconmax
+    nconmax = 512
+  d.nconmax = nconmax
   if njmax == -1:
     # TODO(team): heuristic for njmax
     njmax = 512
@@ -437,25 +454,63 @@ def put_data(
   d.efc_force = wp.array(efc_force_fill, dtype=wp.float32, ndim=1)
   d.efc_margin = wp.array(efc_margin_fill, dtype=wp.float32, ndim=1)
   d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
+
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
-  d.contact.dist = wp.array(tile(mjd.contact.dist), dtype=wp.float32, ndim=2)
-  d.contact.pos = wp.array(tile(mjd.contact.pos), dtype=wp.vec3f, ndim=2)
-  d.contact.frame = wp.array(tile(mjd.contact.frame), dtype=wp.mat33f, ndim=2)
-  d.contact.includemargin = wp.array(
-    tile(mjd.contact.includemargin), dtype=wp.float32, ndim=2
+
+  ncon = mjd.ncon
+  con_efc_address = np.zeros(nconmax, dtype=int)
+  con_worldid = np.zeros(nconmax, dtype=int)
+
+  for i in range(nworld):
+    con_efc_address[i * ncon : (i + 1) * ncon] = mjd.contact.efc_address + i * ncon
+    con_worldid[i * ncon : (i + 1) * ncon] = i
+
+  ncon_fill = nconmax - nworld * ncon
+
+  con_dist_fill = np.concatenate(
+    [np.repeat(mjd.contact.dist, nworld, axis=0), np.zeros(ncon_fill)]
   )
-  d.contact.friction = wp.array(tile(mjd.contact.friction), dtype=wp.float32, ndim=3)
-  d.contact.solref = wp.array(tile(mjd.contact.solref), dtype=wp.float32, ndim=3)
-  d.contact.solreffriction = wp.array(
-    tile(mjd.contact.solreffriction), dtype=wp.float32, ndim=3
+  con_pos_fill = np.vstack(
+    [np.repeat(mjd.contact.pos, nworld, axis=0), np.zeros((ncon_fill, 3))]
   )
-  d.contact.solimp = wp.array(tile(mjd.contact.solimp), dtype=wp.float32, ndim=3)
-  d.contact.dim = wp.array(tile(mjd.contact.dim), dtype=wp.int32, ndim=2)
-  d.contact.geom = wp.array(tile(mjd.contact.geom), dtype=wp.int32, ndim=3)
-  d.contact.efc_address = wp.array(
-    tile(mjd.contact.efc_address), dtype=wp.int32, ndim=2
+  con_frame_fill = np.vstack(
+    [np.repeat(mjd.contact.frame, nworld, axis=0), np.zeros((ncon_fill, 9))]
   )
+  con_includemargin_fill = np.concatenate(
+    [np.repeat(mjd.contact.includemargin, nworld, axis=0), np.zeros(ncon_fill)]
+  )
+  con_friction_fill = np.vstack(
+    [np.repeat(mjd.contact.friction, nworld, axis=0), np.zeros((ncon_fill, 5))]
+  )
+  con_solref_fill = np.vstack(
+    [np.repeat(mjd.contact.solref, nworld, axis=0), np.zeros((ncon_fill, 2))]
+  )
+  con_solreffriction_fill = np.vstack(
+    [np.repeat(mjd.contact.solreffriction, nworld, axis=0), np.zeros((ncon_fill, 2))]
+  )
+  con_solimp_fill = np.vstack(
+    [np.repeat(mjd.contact.solimp, nworld, axis=0), np.zeros((ncon_fill, 5))]
+  )
+  con_dim_fill = np.concatenate(
+    [np.repeat(mjd.contact.dim, nworld, axis=0), np.zeros(ncon_fill)]
+  )
+  con_geom_fill = np.vstack(
+    [np.repeat(mjd.contact.geom, nworld, axis=0), np.zeros((ncon_fill, 2))]
+  )
+
+  d.contact.dist = wp.array(con_dist_fill, dtype=wp.float32, ndim=1)
+  d.contact.pos = wp.array(con_pos_fill, dtype=wp.vec3f, ndim=1)
+  d.contact.frame = wp.array(con_frame_fill, dtype=wp.mat33f, ndim=1)
+  d.contact.includemargin = wp.array(con_includemargin_fill, dtype=wp.float32, ndim=1)
+  d.contact.friction = wp.array(con_friction_fill, dtype=types.vec5, ndim=1)
+  d.contact.solref = wp.array(con_solref_fill, dtype=wp.vec2f, ndim=1)
+  d.contact.solreffriction = wp.array(con_solreffriction_fill, dtype=wp.vec2f, ndim=1)
+  d.contact.solimp = wp.array(con_solimp_fill, dtype=types.vec5, ndim=1)
+  d.contact.dim = wp.array(con_dim_fill, dtype=wp.int32, ndim=1)
+  d.contact.geom = wp.array(con_geom_fill, dtype=wp.vec2i, ndim=1)
+  d.contact.efc_address = wp.array(con_efc_address, dtype=wp.int32, ndim=1)
+  d.contact.worldid = wp.array(con_worldid, dtype=wp.int32, ndim=1)
 
   d.xfrc_applied = wp.array(tile(mjd.xfrc_applied), dtype=wp.spatial_vector, ndim=2)
   # internal tmp arrays
