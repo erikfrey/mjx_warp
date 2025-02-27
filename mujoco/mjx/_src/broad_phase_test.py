@@ -26,6 +26,7 @@ from . import test_util
 
 BoxType = wp.types.matrix(shape=(2, 3), dtype=wp.float32)
 
+
 # Helper function to initialize a box
 def init_box(min_x, min_y, min_z, max_x, max_y, max_z):
   center = wp.vec3((min_x + max_x) / 2, (min_y + max_y) / 2, (min_z + max_z) / 2)
