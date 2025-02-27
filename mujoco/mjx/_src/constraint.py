@@ -65,10 +65,10 @@ def _update_efc_row(
   imp = wp.select(imp_x > 1.0, imp, dmax)
 
   # Update constraints
-  d.efc_D[worldid, efcid] = 1.0 / wp.max(invweight * (1.0 - imp) / imp, types.MJ_MINVAL)
-  d.efc_aref[worldid, efcid] = -k * imp * pos_aref - b * Jqvel
-  d.efc_pos[worldid, efcid] = pos_aref + margin
-  d.efc_margin[worldid, efcid] = margin
+  d.efc_D[efcid] = 1.0 / wp.max(invweight * (1.0 - imp) / imp, types.MJ_MINVAL)
+  d.efc_aref[efcid] = -k * imp * pos_aref - b * Jqvel
+  d.efc_pos[efcid] = pos_aref + margin
+  d.efc_margin[efcid] = margin
 
 
 @wp.func
@@ -114,12 +114,13 @@ def _efc_limit_slide_hinge(
   active = pos < 0
 
   if active:
-    efcid = wp.atomic_add(d.nefc, worldid, 1)
+    efcid = wp.atomic_add(d.nefc_total, 0, 1)
+    d.efc_worldid[efcid] = worldid
 
     dofadr = m.jnt_dofadr[jntid]
 
     J = float(dist_min < dist_max) * 2.0 - 1.0
-    d.efc_J[worldid, efcid, dofadr] = J
+    d.efc_J[efcid, dofadr] = J
     Jqvel = J * d.qvel[worldid, dofadr]
 
     _update_efc_row(
@@ -153,7 +154,8 @@ def _efc_contact_pyramidal(
   active = pos < 0
 
   if active:
-    efcid = wp.atomic_add(d.nefc, worldid, 1)
+    efcid = wp.atomic_add(d.nefc_total, 0, 1)
+    d.efc_worldid[efcid] = worldid
 
     body1 = m.geom_bodyid[d.contact.geom[worldid, conid, 0]]
     body2 = m.geom_bodyid[d.contact.geom[worldid, conid, 1]]
@@ -183,7 +185,7 @@ def _efc_contact_pyramidal(
       else:
         J = diff_0 - diff_i * d.contact.friction[worldid, conid, dimid2 - 1]
 
-      d.efc_J[worldid, efcid, i] = J
+      d.efc_J[efcid, i] = J
       Jqvel += J * d.qvel[worldid, i]
 
     _update_efc_row(
@@ -206,7 +208,7 @@ def make_constraint(m: types.Model, d: types.Data):
   """Creates constraint jacobians and other supporting data."""
 
   if not (m.opt.disableflags & types.DisableBit.CONSTRAINT.value):
-    d.nefc.zero_()
+    d.nefc_total.zero_()
     d.efc_J.zero_()
 
     refsafe = not m.opt.disableflags & types.DisableBit.REFSAFE.value

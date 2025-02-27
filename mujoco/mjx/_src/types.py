@@ -167,13 +167,23 @@ array3df = wp.array3d(dtype=wp.float32)
 
 @wp.struct
 class Option:
-  gravity: wp.vec3
-  is_sparse: bool  # warp only
   timestep: float
-  integrator: int  # mjtIntegrator
-  cone: int
+  tolerance: float
+  ls_tolerance: float
+  gravity: wp.vec3
+  cone: int  # mjtCone
+  solver: int  # mjtSolver
+  iterations: int
+  ls_iterations: int
   disableflags: int
+  integrator: int  # mjtIntegrator
   impratio: wp.float32
+  is_sparse: bool  # warp only
+
+
+@wp.struct
+class Statistic:
+  meaninertia: float
 
 
 @wp.struct
@@ -189,6 +199,7 @@ class Model:
   nmocap: int
   nM: int
   opt: Option
+  stat: Statistic
   qpos0: wp.array(dtype=wp.float32, ndim=1)
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
   body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
@@ -249,6 +260,8 @@ class Model:
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
   dof_invweight0: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
+  dof_tri_row: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  dof_tri_col: wp.array(dtype=wp.int32, ndim=1)  # warp only
   actuator_trntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_trnid: wp.array(dtype=wp.int32, ndim=2)
   actuator_ctrllimited: wp.array(dtype=wp.bool, ndim=1)
@@ -286,17 +299,20 @@ class Contact:
 @wp.struct
 class Data:
   nworld: int
-  ncon: int
-  nl: int
-  nefc: wp.array(dtype=wp.int32, ndim=1)
+  nefc_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  njmax: int
   time: float
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
+  qacc_warmstart: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
+  ncon: int
+  nl: int
+  nefc: wp.array(dtype=wp.int32, ndim=1)
   ctrl: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
   qacc: wp.array(dtype=wp.float32, ndim=2)
-  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
   xanchor: wp.array(dtype=wp.vec3, ndim=2)
   xaxis: wp.array(dtype=wp.vec3, ndim=2)
   xmat: wp.array(dtype=wp.mat33, ndim=2)
@@ -331,13 +347,17 @@ class Data:
   qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
+  efc_J: wp.array(dtype=wp.float32, ndim=2)
+  efc_D: wp.array(dtype=wp.float32, ndim=1)
+  efc_pos: wp.array(dtype=wp.float32, ndim=1)
+  efc_aref: wp.array(dtype=wp.float32, ndim=1)
+  efc_force: wp.array(dtype=wp.float32, ndim=1)
+  efc_margin: wp.array(dtype=wp.float32, ndim=1)
+  efc_worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
   xfrc_applied: wp.array(dtype=wp.spatial_vector, ndim=2)
   contact: Contact
-  efc_J: wp.array(dtype=wp.float32, ndim=3)
-  efc_pos: wp.array(dtype=wp.float32, ndim=2)
-  efc_margin: wp.array(dtype=wp.float32, ndim=2)
-  efc_D: wp.array(dtype=wp.float32, ndim=2)
-  efc_aref: wp.array(dtype=wp.float32, ndim=2)
 
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)

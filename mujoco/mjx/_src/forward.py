@@ -22,6 +22,7 @@ from . import constraint
 from . import math
 from . import passive
 from . import smooth
+from . import solver
 
 from .types import array2df, array3df
 from .types import Model
@@ -513,10 +514,10 @@ def forward(m: Model, d: Data):
   fwd_acceleration(m, d)
   # TODO(team): sensor.sensor_acc
 
-  # if nefc == 0
-  wp.copy(d.qacc, d.qacc_smooth)
-
-  # TODO(team): solver.solve
+  if d.njmax == 0:
+    wp.copy(d.qacc, d.qacc_smooth)
+  else:
+    solver.solve(m, d)
 
 
 def step(m: Model, d: Data):

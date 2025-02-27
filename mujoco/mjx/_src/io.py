@@ -33,14 +33,25 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
   m.nM = mjm.nM
-  m.opt.gravity = wp.vec3(mjm.opt.gravity)
-  m.opt.is_sparse = support.is_sparse(mjm)
   m.opt.timestep = mjm.opt.timestep
+  m.opt.tolerance = mjm.opt.tolerance
+  m.opt.ls_tolerance = mjm.opt.ls_tolerance
+  m.opt.gravity = wp.vec3(mjm.opt.gravity)
+  m.opt.cone = mjm.opt.cone
+  m.opt.solver = mjm.opt.solver
+  m.opt.iterations = mjm.opt.iterations
+  m.opt.ls_iterations = mjm.opt.ls_iterations
   m.opt.integrator = mjm.opt.integrator
   m.opt.disableflags = mjm.opt.disableflags
+  m.opt.impratio = wp.float32(mjm.opt.impratio)
+  m.opt.is_sparse = support.is_sparse(mjm)
+  m.stat.meaninertia = mjm.stat.meaninertia
 
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
+
+  # dof lower triangle row and column indices
+  dof_tri_row, dof_tri_col = np.tril_indices(mjm.nv)
 
   # indices for sparse qM
   is_, js, madr_ijs = [], [], []
@@ -223,6 +234,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
+  m.dof_tri_row = wp.from_numpy(dof_tri_row, dtype=wp.int32)
+  m.dof_tri_col = wp.from_numpy(dof_tri_col, dtype=wp.int32)
   m.dof_invweight0 = wp.array(mjm.dof_invweight0, dtype=wp.float32, ndim=1)
   m.actuator_trntype = wp.array(mjm.actuator_trntype, dtype=wp.int32, ndim=1)
   m.actuator_trnid = wp.array(mjm.actuator_trnid, dtype=wp.int32, ndim=2)
@@ -240,12 +253,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.actuator_actadr = wp.array(mjm.actuator_actadr, dtype=wp.int32, ndim=1)
   m.actuator_dyntype = wp.array(mjm.actuator_dyntype, dtype=wp.int32, ndim=1)
   m.actuator_dynprm = wp.array(mjm.actuator_dynprm, dtype=types.vec10f, ndim=1)
-  m.opt.gravity = wp.vec3(mjm.opt.gravity)
-  m.opt.is_sparse = support.is_sparse(mjm)
-  m.opt.cone = mjm.opt.cone
-  m.opt.disableflags = mjm.opt.disableflags
-  m.opt.timestep = wp.float32(mjm.opt.timestep)
-  m.opt.impratio = wp.float32(mjm.opt.impratio)
 
   # short-circuiting here allows us to skip a lot of code in implicit integration
   m.actuator_affine_bias_gain = bool(
@@ -256,9 +263,17 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   return m
 
 
-def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
+def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
+  d.nefc_total = wp.zeros((1,), dtype=wp.int32, ndim=1)
+
+  # TODO(team): move to Model?
+  if njmax == -1:
+    # TODO(team): heuristic for njmax
+    njmax = 512
+  d.njmax = njmax
+
   d.ncon = 0
   d.nefc = wp.zeros(nworld, dtype=wp.int32)
   d.nl = 0
@@ -267,6 +282,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
   d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
+  d.qacc_warmstart = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.zeros((nworld, mjm.nmocap), dtype=wp.vec3)
   d.mocap_quat = wp.zeros((nworld, mjm.nmocap), dtype=wp.quat)
@@ -315,11 +331,6 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.contact.dim = wp.zeros((nworld, d.ncon), dtype=wp.int32)
   d.contact.geom = wp.zeros((nworld, d.ncon, 2), dtype=wp.int32)
   d.contact.efc_address = wp.zeros((nworld, d.ncon), dtype=wp.int32)
-  d.efc_J = wp.zeros((nworld, 1, mjm.nv), dtype=wp.float32)
-  d.efc_pos = wp.zeros((nworld, 1), dtype=wp.float32)
-  d.efc_margin = wp.zeros((nworld, 1), dtype=wp.float32)
-  d.efc_D = wp.zeros((nworld, 1), dtype=wp.float32)
-  d.efc_aref = wp.zeros((nworld, 1), dtype=wp.float32)
   d.qfrc_passive = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_spring = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_damper = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -328,6 +339,14 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.ctrl = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
+  d.efc_J = wp.zeros((njmax, mjm.nv), dtype=wp.float32)
+  d.efc_D = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_pos = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_aref = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_force = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_margin = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_worldid = wp.zeros((njmax,), dtype=wp.int32)
+
   d.xfrc_applied = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
 
   # internal tmp arrays
@@ -341,9 +360,22 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   return d
 
 
-def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.Data:
+def put_data(
+  mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, njmax: int = -1
+) -> types.Data:
   d = types.Data()
   d.nworld = nworld
+  d.nefc_total = wp.array([mjd.nefc * nworld], dtype=wp.int32, ndim=1)
+
+  # TODO(team): move to Model?
+  if njmax == -1:
+    # TODO(team): heuristic for njmax
+    njmax = 512
+  d.njmax = njmax
+
+  if nworld * mjd.nefc > njmax:
+    raise ValueError("nworld * nefc > njmax")
+
   d.ncon = mjd.ncon
   d.nl = mjd.nl
   d.nefc = wp.zeros(1, dtype=wp.int32)
@@ -356,10 +388,13 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   if support.is_sparse(mjm):
     qM = np.expand_dims(mjd.qM, axis=0)
     qLD = np.expand_dims(mjd.qLD, axis=0)
+    # TODO(taylorhowell): sparse efc_J
+    efc_J = np.zeros((mjd.nefc, mjm.nv))
   else:
     qM = np.zeros((mjm.nv, mjm.nv))
     mujoco.mj_fullM(mjm, qM, mjd.qM)
     qLD = np.linalg.cholesky(qM)
+    efc_J = mjd.efc_J.reshape((mjd.nefc, mjm.nv))
 
   # TODO(taylorhowell): sparse actuator_moment
   actuator_moment = np.zeros((mjm.nu, mjm.nv))
@@ -373,6 +408,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
 
   d.qpos = wp.array(tile(mjd.qpos), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile(mjd.qvel), dtype=wp.float32, ndim=2)
+  d.qacc_warmstart = wp.array(tile(mjd.qacc_warmstart), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.array(tile(mjd.qfrc_applied), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.array(tile(mjd.mocap_pos), dtype=wp.vec3, ndim=2)
   d.mocap_quat = wp.array(tile(mjd.mocap_quat), dtype=wp.quat, ndim=2)
@@ -410,6 +446,42 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qfrc_smooth = wp.array(tile(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
   d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
+  d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
+
+  nefc = mjd.nefc
+  efc_worldid = np.zeros(njmax, dtype=int)
+
+  for i in range(nworld):
+    efc_worldid[i * nefc : (i + 1) * nefc] = i
+
+  nefc_fill = njmax - nworld * nefc
+
+  efc_J_fill = np.vstack(
+    [np.repeat(efc_J, nworld, axis=0), np.zeros((nefc_fill, mjm.nv))]
+  )
+  efc_D_fill = np.concatenate(
+    [np.repeat(mjd.efc_D, nworld, axis=0), np.zeros(nefc_fill)]
+  )
+  efc_pos_fill = np.concatenate(
+    [np.repeat(mjd.efc_pos, nworld, axis=0), np.zeros(nefc_fill)]
+  )
+  efc_aref_fill = np.concatenate(
+    [np.repeat(mjd.efc_aref, nworld, axis=0), np.zeros(nefc_fill)]
+  )
+  efc_force_fill = np.concatenate(
+    [np.repeat(mjd.efc_force, nworld, axis=0), np.zeros(nefc_fill)]
+  )
+  efc_margin_fill = np.concatenate(
+    [np.repeat(mjd.efc_margin, nworld, axis=0), np.zeros(nefc_fill)]
+  )
+
+  d.efc_J = wp.array(efc_J_fill, dtype=wp.float32, ndim=2)
+  d.efc_D = wp.array(efc_D_fill, dtype=wp.float32, ndim=1)
+  d.efc_pos = wp.array(efc_pos_fill, dtype=wp.float32, ndim=1)
+  d.efc_aref = wp.array(efc_aref_fill, dtype=wp.float32, ndim=1)
+  d.efc_force = wp.array(efc_force_fill, dtype=wp.float32, ndim=1)
+  d.efc_margin = wp.array(efc_margin_fill, dtype=wp.float32, ndim=1)
+  d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
   d.ctrl = wp.array(tile(mjd.ctrl), dtype=wp.float32, ndim=2)
@@ -430,11 +502,6 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.contact.efc_address = wp.array(
     tile(mjd.contact.efc_address), dtype=wp.int32, ndim=2
   )
-  d.efc_J = wp.zeros((nworld, mjd.nefc, mjm.nv), dtype=wp.float32)
-  d.efc_pos = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
-  d.efc_margin = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
-  d.efc_D = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
-  d.efc_aref = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
 
   d.xfrc_applied = wp.array(tile(mjd.xfrc_applied), dtype=wp.spatial_vector, ndim=2)
   # internal tmp arrays

@@ -36,6 +36,7 @@ from ._src.smooth import kinematics
 from ._src.smooth import rne
 from ._src.smooth import solve_m
 from ._src.smooth import transmission
+from ._src.solver import solve
 from ._src.support import is_sparse
 from ._src.support import mul_m
 from ._src.support import xfrc_accumulate

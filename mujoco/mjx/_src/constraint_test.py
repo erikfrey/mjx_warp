@@ -47,11 +47,11 @@ class ConstraintTest(parameterized.TestCase):
       d = mjx.put_data(mjm, mjd)
       mjx.make_constraint(m, d)
 
-      _assert_eq(d.efc_J.numpy().reshape(-1), mjd.efc_J, "efc_J")
-      _assert_eq(d.efc_D.numpy()[0], mjd.efc_D, "efc_D")
-      _assert_eq(d.efc_aref.numpy()[0], mjd.efc_aref, "efc_aref")
-      _assert_eq(d.efc_pos.numpy()[0], mjd.efc_pos, "efc_pos")
-      _assert_eq(d.efc_margin.numpy()[0], mjd.efc_margin, "efc_margin")
+      _assert_eq(d.efc_J.numpy()[: mjd.nefc, :].reshape(-1), mjd.efc_J, "efc_J")
+      _assert_eq(d.efc_D.numpy()[: mjd.nefc], mjd.efc_D, "efc_D")
+      _assert_eq(d.efc_aref.numpy()[: mjd.nefc], mjd.efc_aref, "efc_aref")
+      _assert_eq(d.efc_pos.numpy()[: mjd.nefc], mjd.efc_pos, "efc_pos")
+      _assert_eq(d.efc_margin.numpy()[: mjd.nefc], mjd.efc_margin, "efc_margin")
 
 
 if __name__ == "__main__":
