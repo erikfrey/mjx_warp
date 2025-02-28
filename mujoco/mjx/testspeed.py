@@ -52,6 +52,9 @@ _IS_SPARSE = flags.DEFINE_bool(
 _NEFC_TOTAL = flags.DEFINE_integer(
   "nefc_total", 0, "total number of efc for batch of worlds"
 )
+_CLEAR_CACHE = flags.DEFINE_bool(
+  "clear_cache", False, "Measure full JIT time by clearing cache."
+)
 _OUTPUT = flags.DEFINE_enum(
   "output", "text", ["text", "tsv"], "format to print results"
 )
@@ -73,6 +76,9 @@ def _main(argv: Sequence[str]):
     m.opt.jacobian = mujoco.mjtJacobian.mjJAC_SPARSE
   else:
     m.opt.jacobian = mujoco.mjtJacobian.mjJAC_DENSE
+  
+  if _CLEAR_CACHE.value:
+    wp.clear_kernel_cache()
 
   print(
     f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value}"
@@ -99,7 +105,7 @@ Summary for {_BATCH_SIZE.value} parallel rollouts
  Total simulation time: {run_time:.2f} s
  Total steps per second: {steps / run_time:,.0f}
  Total realtime factor: {steps * m.opt.timestep / run_time:,.2f} x
- Total time per step: {1e6 * run_time / steps:.2f} µs""")
+ Total time per step: {1e9 * run_time / steps:.2f} ns""")
   elif _OUTPUT.value == "tsv":
     name = name.split("/")[-1].replace("testspeed_", "")
     print(f"{name}\tjit: {jit_time:.2f}s\tsteps/second: {steps / run_time:.0f}")

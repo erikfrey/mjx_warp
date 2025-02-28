@@ -274,7 +274,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
   wp.launch(_grad, dim=(d.nworld, m.nv), inputs=[ctx, d])
 
   if m.opt.solver == 1:  # CG
-    smooth.solve_m(m, d, ctx.grad, ctx.Mgrad)
+    smooth.solve_LD(m, d, d.qLD, d.qLDiagInv, ctx.grad, ctx.Mgrad)
   elif m.opt.solver == 2:  # Newton
     # TODO(team): sparse version
     # h = qM + (efc_J.T * efc_D * active) @ efc_J

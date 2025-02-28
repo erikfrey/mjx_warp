@@ -655,6 +655,6 @@ def solve_LD(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2
     _solve_LD_dense(m, d, L, x, y)
 
 
-def solve_m(m: Model, d: Data, x: array2df, y: array2df):
+def solve_m(m: Model, d: Data):
   """Computes backsubstitution: x = qLD * y."""
-  solve_LD(m, d, d.qLD, d.qLDiagInv, x, y)
+  solve_LD(m, d, d.qLD, d.qLDiagInv, d.qacc_smooth, d.qfrc_smooth)

@@ -69,7 +69,6 @@ def benchmark(
   dx = io.make_data(m, nworld=batch_size, njmax=nefc_total)
   dx.nefc_total = wp.array([nefc_total], dtype=wp.int32, ndim=1)
 
-  wp.clear_kernel_cache()
   jit_beg = time.perf_counter()
   fn(mx, dx)
   fn(mx, dx) # double warmup to work around issues with compilation during graph capture
@@ -78,9 +77,16 @@ def benchmark(
   wp.synchronize()
 
   # capture the whole smooth.kinematic() function as a CUDA graph
+  beg, end = None, None
+  # beg = wp.Event(enable_timing=True)
+  # end = wp.Event(enable_timing=True)
   with wp.ScopedCapture() as capture:
+    beg = wp.record_event()
     fn(mx, dx)
+    end = wp.record_event()
   graph = capture.graph
+  result = wp.get_event_elapsed_time(beg, end, synchronize=True)
+  print(result)
 
   run_beg = time.perf_counter()
   for _ in range(nstep):

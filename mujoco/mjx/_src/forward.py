@@ -330,7 +330,7 @@ def fwd_acceleration(m: Model, d: Data):
     _qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied, qfrc_accumulated]
   )
 
-  smooth.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
+  smooth.solve_m(m, d)
 
 
 def forward(m: Model, d: Data):
