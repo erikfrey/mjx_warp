@@ -156,6 +156,16 @@ class ImplicitIntegratorTest(parameterized.TestCase):
       scale=10, size=mjm.actuator_gainprm[:, 2].shape
     )
 
+    # change actuators to velocity/damper to cover all codepaths
+    mjm.actuator_gaintype[3] = mujoco.mjtGain.mjGAIN_AFFINE
+    mjm.actuator_gaintype[6] = mujoco.mjtGain.mjGAIN_AFFINE
+    mjm.actuator_biastype[0:3] = mujoco.mjtBias.mjBIAS_AFFINE
+    mjm.actuator_biastype[4:6] = mujoco.mjtBias.mjBIAS_AFFINE
+    mjm.actuator_biasprm[0:3, 2] = -1
+    mjm.actuator_biasprm[4:6, 2] = -1
+    mjm.actuator_ctrlrange[3:7] = 10.0
+    mjm.actuator_gear[:] = 1.0
+
     mjd = mujoco.MjData(mjm)
 
     mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
@@ -177,7 +187,7 @@ class ImplicitIntegratorTest(parameterized.TestCase):
   )
   def test_implicit(self, disableFlags):
     np.random.seed(0)
-    mjm, mjd, m, d = self._load("pendula_implicit.xml", disableFlags)
+    mjm, mjd, m, d = self._load("pendula.xml", disableFlags)
 
     mjx.implicit(m, d)
     mujoco.mj_implicit(mjm, mjd)
