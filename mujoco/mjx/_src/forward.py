@@ -238,6 +238,7 @@ def implicit(m: Model, d: Data) -> Data:
 
   # assumptions
   assert not m.opt.is_sparse  # unsupported
+  # TODO(team): add sparse version
 
   # compile-time constants
   passive_enabled = not m.opt.disableflags & DisableBit.PASSIVE.value
