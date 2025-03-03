@@ -49,11 +49,17 @@ _LS_ITERATIONS = flags.DEFINE_integer(
 _IS_SPARSE = flags.DEFINE_bool(
   "is_sparse", True, "if model should create sparse mass matrices"
 )
-_NEFC_TOTAL = flags.DEFINE_integer(
-  "nefc_total", 0, "total number of efc for batch of worlds"
+_NCONMAX = flags.DEFINE_integer(
+  "nconmax", -1, "Maximum number of contacts in a batch physics step."
+)
+_NJMAX = flags.DEFINE_integer(
+  "njmax", -1, "Maximum number of constraints in a batch physics step."
 )
 _OUTPUT = flags.DEFINE_enum(
   "output", "text", ["text", "tsv"], "format to print results"
+)
+_CLEAR_KERNEL_CACHE = flags.DEFINE_bool(
+  "clear_kernel_cache", False, "Clear kernel cache (to calculate full JIT time)"
 )
 
 
@@ -74,20 +80,32 @@ def _main(argv: Sequence[str]):
   else:
     m.opt.jacobian = mujoco.mjtJacobian.mjJAC_DENSE
 
+  d = mujoco.MjData(m)
+  if m.nkey > 0:
+    mujoco.mj_resetDataKeyframe(m, d, 0)
+  # populate some constraints
+  mujoco.mj_forward(m, d)
+
+  if _CLEAR_KERNEL_CACHE.value:
+    wp.clear_kernel_cache()
+
   print(
     f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value}"
   )
+  print(f"Data ncon: {d.ncon} nefc: {d.nefc}")
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
   jit_time, run_time, steps = mjx.benchmark(
     mjx.__dict__[_FUNCTION.value],
     m,
+    d,
     _NSTEP.value,
     _BATCH_SIZE.value,
     _UNROLL.value,
     _SOLVER.value,
     _ITERATIONS.value,
     _LS_ITERATIONS.value,
-    _NEFC_TOTAL.value,
+    _NCONMAX.value,
+    _NJMAX.value,
   )
 
   name = argv[0]
@@ -99,7 +117,7 @@ Summary for {_BATCH_SIZE.value} parallel rollouts
  Total simulation time: {run_time:.2f} s
  Total steps per second: {steps / run_time:,.0f}
  Total realtime factor: {steps * m.opt.timestep / run_time:,.2f} x
- Total time per step: {1e6 * run_time / steps:.2f} µs""")
+ Total time per step: {1e9 * run_time / steps:.2f} ns""")
   elif _OUTPUT.value == "tsv":
     name = name.split("/")[-1].replace("testspeed_", "")
     print(f"{name}\tjit: {jit_time:.2f}s\tsteps/second: {steps / run_time:.0f}")

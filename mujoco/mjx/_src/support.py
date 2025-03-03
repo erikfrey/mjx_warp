@@ -72,8 +72,8 @@ def mul_m(
       vec: wp.array(ndim=2, dtype=wp.float32),
     ):
       worldid, elementid = wp.tid()
-      i = m.qM_i[elementid]
-      j = m.qM_j[elementid]
+      i = m.qM_mulm_i[elementid]
+      j = m.qM_mulm_j[elementid]
       madr_ij = m.qM_madr_ij[elementid]
 
       qM = d.qM[worldid, 0, madr_ij]

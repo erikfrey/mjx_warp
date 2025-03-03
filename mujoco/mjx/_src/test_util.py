@@ -31,6 +31,7 @@ from . import types
 def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
   path = epath.resource_path("mujoco.mjx") / "test_data" / fname
   mjm = mujoco.MjModel.from_xml_path(path.as_posix())
+  mjm.opt.jacobian = sparse
   mjd = mujoco.MjData(mjm)
   if keyframe > -1:
     mujoco.mj_resetDataKeyframe(mjm, mjd, keyframe)
@@ -38,7 +39,6 @@ def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
   mjd.qvel = np.random.uniform(-0.01, 0.01, mjm.nv)
   mujoco.mj_step(mjm, mjd, 3)  # let dynamics get state significantly non-zero
   mujoco.mj_forward(mjm, mjd)
-  mjm.opt.jacobian = sparse
   m = io.put_model(mjm)
   d = io.put_data(mjm, mjd)
   return mjm, mjd, m, d
@@ -46,39 +46,41 @@ def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
 
 def benchmark(
   fn: Callable[[types.Model, types.Data], None],
-  m: mujoco.MjModel,
+  mjm: mujoco.MjModel,
+  mjd: mujoco.MjData,
   nstep: int = 1000,
   batch_size: int = 1024,
   unroll_steps: int = 1,
   solver: str = "cg",
   iterations: int = 1,
   ls_iterations: int = 4,
-  nefc_total: int = 0,
+  nconmax: int = -1,
+  njmax: int = -1,
 ) -> Tuple[float, float, int]:
   """Benchmark a model."""
 
   if solver == "cg":
-    m.opt.solver = mujoco.mjtSolver.mjSOL_CG
+    mjm.opt.solver = mujoco.mjtSolver.mjSOL_CG
   elif solver == "newton":
-    m.opt.solver = mujoco.mjtSolver.mjSOL_NEWTON
+    mjm.opt.solver = mujoco.mjtSolver.mjSOL_NEWTON
 
-  m.opt.iterations = iterations
-  m.opt.ls_iterations = ls_iterations
+  mjm.opt.iterations = iterations
+  mjm.opt.ls_iterations = ls_iterations
 
-  mx = io.put_model(m)
-  dx = io.make_data(m, nworld=batch_size, njmax=nefc_total)
-  dx.nefc_total = wp.array([nefc_total], dtype=wp.int32, ndim=1)
+  m = io.put_model(mjm)
+  d = io.put_data(mjm, mjd, nworld=batch_size, nconmax=nconmax, njmax=njmax)
 
-  wp.clear_kernel_cache()
   jit_beg = time.perf_counter()
-  fn(mx, dx)
+  fn(m, d)
+  # double warmup to work around issues with compilation during graph capture:
+  fn(m, d)
   jit_end = time.perf_counter()
   jit_duration = jit_end - jit_beg
   wp.synchronize()
 
   # capture the whole smooth.kinematic() function as a CUDA graph
   with wp.ScopedCapture() as capture:
-    fn(mx, dx)
+    fn(m, d)
   graph = capture.graph
 
   run_beg = time.perf_counter()

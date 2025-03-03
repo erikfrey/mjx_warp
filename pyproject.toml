@@ -28,18 +28,14 @@ requires-python = ">=3.9"
 dependencies = [
     "absl-py",
     "etils[epath]",
-    "jax",
-    "jaxlib",
     "mujoco>=3.2.7",
     "pytest",
-    "scipy",
     "trimesh",
     "warp-lang",
 ]
 
 [project.scripts]
 mjx-testspeed = "mujoco.mjx.testspeed:main"
-mjx-viewer = "mujoco.mjx.viewer:main"
 
 [project.urls]
 Homepage = "https://github.com/google-deepmind/mujoco/tree/main/mjx"
