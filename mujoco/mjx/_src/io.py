@@ -361,7 +361,6 @@ def make_data(
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.ctrl = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
   d.efc_J = wp.zeros((njmax, mjm.nv), dtype=wp.float32)
   d.efc_D = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_pos = wp.zeros((njmax,), dtype=wp.float32)
@@ -431,7 +430,6 @@ def put_data(
   if nworld * mjd.nefc > njmax:
     raise ValueError("nworld * nefc > njmax")
 
-  d.ncon = mjd.ncon
   d.nl = mjd.nl
   d.nefc = wp.zeros(1, dtype=wp.int32)
   d.time = mjd.time
@@ -504,6 +502,8 @@ def put_data(
   d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
   d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
+  d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
+  d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
 
   nefc = mjd.nefc
   efc_worldid = np.zeros(njmax, dtype=int)
@@ -539,10 +539,6 @@ def put_data(
   d.efc_force = wp.array(efc_force_fill, dtype=wp.float32, ndim=1)
   d.efc_margin = wp.array(efc_margin_fill, dtype=wp.float32, ndim=1)
   d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
-
-  d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
-  d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
-  d.ctrl = wp.array(tile(mjd.ctrl), dtype=wp.float32, ndim=2)
 
   ncon = mjd.ncon
   con_efc_address = np.zeros(nconmax, dtype=int)
