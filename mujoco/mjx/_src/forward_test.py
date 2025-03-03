@@ -26,8 +26,6 @@ from mujoco import mjx
 
 wp.config.verify_cuda = True
 
-wp.config.verify_cuda = True
-
 # tolerance for difference between MuJoCo and MJX smooth calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
@@ -173,9 +171,9 @@ class ImplicitIntegratorTest(parameterized.TestCase):
 
   @parameterized.parameters(
     0,
-    DisableBit.PASSIVE.value,
-    DisableBit.ACTUATION.value,
-    DisableBit.PASSIVE.value & DisableBit.ACTUATION.value,
+    mjx.DisableBit.PASSIVE.value,
+    mjx.DisableBit.ACTUATION.value,
+    mjx.DisableBit.PASSIVE.value & mjx.DisableBit.ACTUATION.value,
   )
   def test_implicit(self, disableFlags):
     np.random.seed(0)

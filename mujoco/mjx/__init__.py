@@ -23,6 +23,7 @@ from ._src.forward import fwd_actuation as fwd_actuation
 from ._src.forward import fwd_acceleration as fwd_acceleration
 from ._src.forward import fwd_position as fwd_position
 from ._src.forward import fwd_velocity as fwd_velocity
+from ._src.forward import implicit as implicit
 from ._src.forward import step as step
 from ._src.io import make_data as make_data
 from ._src.io import put_data as put_data
