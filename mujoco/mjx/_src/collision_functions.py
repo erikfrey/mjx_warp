@@ -242,14 +242,14 @@ def create_collision_function_kernel(type1, type2):
     geom1 = wp.static(get_info(type1))(
       g1,
       m,
-      d.geom_xpos[g1],
-      d.geom_xmat[g1],
+      d.geom_xpos[worldid],
+      d.geom_xmat[worldid],
     )
     geom2 = wp.static(get_info(type2))(
       g2,
       m,
-      d.geom_xpos[g2],
-      d.geom_xmat[g2],
+      d.geom_xpos[worldid],
+      d.geom_xmat[worldid],
     )
 
     index, ncon = wp.static(_collision_functions[(type1, type2)])(
