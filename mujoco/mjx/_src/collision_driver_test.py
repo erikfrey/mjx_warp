@@ -72,5 +72,3 @@ class ConvexTest(absltest.TestCase):
     dx = mjx.put_data(m, d, nconmax=10)
 
     mjx.collision(mx, dx)
-    print(dx.contact)
-    assert 0 == 1
