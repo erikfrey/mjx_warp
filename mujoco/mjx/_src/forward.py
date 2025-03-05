@@ -524,7 +524,6 @@ def step(m: Model, d: Data):
     # TODO(team): rungekutta4
     raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
   elif m.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICITFAST:
-    # TODO(team): implicit
-    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
+    implicit(m, d)
   else:
     raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
