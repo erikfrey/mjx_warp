@@ -20,6 +20,7 @@ from .types import Data
 from .types import GeomType
 from .math import make_frame
 from .math import normalize_with_norm
+from .math import matmul_unroll_33
 from .support import group_key
 from .support import mat33_from_cols
 
@@ -144,6 +145,256 @@ def get_info(t):
 
 
 @wp.func
+def _clearance_gradient(
+  geom1_pos: wp.vec3,
+  geom2_pos: wp.vec3,
+  geom1_mat: wp.mat33,
+  geom2_mat: wp.mat33,
+  geom1_radius: wp.float32,
+  geom2_radius: wp.float32,
+  geom1_halfsize: wp.float32,
+  geom2_halfsize: wp.float32,
+  pos: wp.vec3,
+) -> wp.vec3:
+  relmat = matmul_unroll_33(wp.transpose(geom1_mat), geom2_mat)
+  relpos = wp.transpose(geom1_mat) @ (geom2_pos - geom1_pos)
+  new_pos = relmat @ pos + relpos
+
+  cylinder1_pos = _cylinder(new_pos, geom1_radius, geom1_halfsize)
+  cylinder2_pos = _cylinder(pos, geom2_radius, geom2_halfsize)
+
+  grad_cylinder1 = _cylinder_gradient(new_pos, geom1_radius, geom1_halfsize)
+  grad_cylinder1 = relmat @ grad_cylinder1
+  grad_cylinder2 = _cylinder_gradient(pos, geom2_radius, geom2_halfsize)
+
+  grad_temp = wp.select(cylinder1_pos > cylinder2_pos, grad_cylinder2, grad_cylinder1)
+  sca = wp.select(wp.max(cylinder1_pos, cylinder2_pos) > 0.0, -1.0, 1.0)
+  gradient = wp.vec3(
+    grad_cylinder1[0] + grad_cylinder2[0] + grad_temp[0] * sca,
+    grad_cylinder1[1] + grad_cylinder2[1] + grad_temp[1] * sca,
+    grad_cylinder1[2] + grad_cylinder2[2] + grad_temp[2] * sca,
+  )
+
+  return gradient
+
+
+@wp.func
+def _cylinder_gradient(
+  pos: wp.vec3, radius: wp.float32, halfsize: wp.float32
+) -> wp.vec3:
+  c = wp.sqrt(pos[0] * pos[0] + pos[1] * pos[1])
+  e = wp.abs(pos[2])
+  a0 = c - radius
+  a1 = e - halfsize
+  gradient = wp.vec3(0.0)
+  amax = wp.max(a0, a1)
+
+  if amax < 0.0:
+    if a0 < amax:
+      gradient[2] = wp.select(e == 0.0, pos[2] / e, 0.0)
+
+    if a1 < amax:
+      gradient[0] = wp.select(c == 0.0, pos[0] / c, 0.0)
+      gradient[1] = wp.select(c == 0.0, pos[1] / c, 0.0)
+
+  else:
+    b0 = wp.max(a0, 0.0)
+    b1 = wp.max(a1, 0.0)
+
+    bnorm = wp.sqrt(b0 * b0 + b1 * b1)
+    gradient[0] = (b0 / bnorm) * (pos[0] / c)
+    gradient[1] = (b0 / bnorm) * (pos[1] / c)
+    gradient[2] = (b1 / bnorm) * (pos[2] / e)
+
+    if gradient[0] != gradient[0]:
+      # Handling special cases inducing NaN values
+      if bnorm == 0.0 and c == 0.0:
+        gradient[0] = 0.0
+        gradient[1] = 0.0
+      elif bnorm == 0.0:
+        gradient[0] = pos[0] / c
+        gradient[1] = pos[1] / c
+      elif c == 0.0:
+        gradient[0] = b0 / bnorm
+        gradient[1] = b0 / bnorm
+
+    if gradient[2] != gradient[2]:
+      # Handling special cases inducing NaN values
+      if bnorm == 0.0 and e == 0.0:
+        gradient[2] = 0.0
+      elif bnorm == 0.0:
+        gradient[2] = pos[2] / e
+      elif e == 0.0:
+        gradient[2] = b1 / bnorm
+
+  return gradient
+
+
+@wp.func
+def _cylinder(pos: wp.vec3, radius: wp.float32, halfsize: wp.float32) -> wp.float32:
+  a0 = wp.sqrt(pos[0] * pos[0] + pos[1] * pos[1]) - radius
+  a1 = wp.abs(pos[2]) - halfsize
+  b0 = wp.max(a0, 0.0)
+  b1 = wp.max(a1, 0.0)
+  return wp.min(wp.max(a0, a1), 0.0) + wp.sqrt(b0 * b0 + b1 * b1)
+
+
+@wp.func
+def _cylinder_frame(
+  pos: wp.vec3,
+  from_pos: wp.vec3,
+  from_mat: wp.mat33,
+  to_pos: wp.vec3,
+  to_mat: wp.mat33,
+  radius: wp.float32,
+  halfsize: wp.float32,
+) -> wp.float32:
+  relmat = matmul_unroll_33(wp.transpose(to_mat), from_mat)
+  relpos = wp.transpose(to_mat) @ (from_pos - to_pos)
+  new_pos = relmat @ pos + relpos
+
+  return _cylinder(new_pos, radius, halfsize)
+
+
+@wp.func
+def _gradient_step(
+  geom1_pos: wp.vec3,
+  geom2_pos: wp.vec3,
+  geom1_mat: wp.mat33,
+  geom2_mat: wp.mat33,
+  geom1_radius: wp.float32,
+  geom2_radius: wp.float32,
+  geom1_halfsize: wp.float32,
+  geom2_halfsize: wp.float32,
+  x: wp.vec3,
+):
+  """Performs a step of gradient descent."""
+  amin = 1.0e-4  # minimum value for line search factor scaling the gradient
+  amax = 2.0  # maximum value for line search factor scaling the gradient
+  nlinesearch = 10  # line search points
+
+  grad_clearance = _clearance_gradient(
+    geom1_pos,
+    geom2_pos,
+    geom1_mat,
+    geom2_mat,
+    geom1_radius,
+    geom2_radius,
+    geom1_halfsize,
+    geom2_halfsize,
+    x,
+  )
+
+  ratio = (amax / amin) ** (1.0 / float(nlinesearch - 1))
+  value_prev = 1.0e10
+  candidate_prev = wp.vec3(0.0)
+  for i in range(nlinesearch):
+    alpha = amin * (ratio ** float(i))
+    candidate = wp.vec3(
+      x[0] - alpha * grad_clearance[0],
+      x[1] - alpha * grad_clearance[1],
+      x[2] - alpha * grad_clearance[2],
+    )
+    cylinder1_pos = _cylinder_frame(
+      candidate,
+      geom2_pos,
+      geom2_mat,
+      geom1_pos,
+      geom1_mat,
+      geom1_radius,
+      geom1_halfsize,
+    )
+    cylinder2_pos = _cylinder(candidate, geom2_radius, geom2_halfsize)
+    value = cylinder1_pos + cylinder2_pos + wp.abs(wp.max(cylinder1_pos, cylinder2_pos))
+    if value < value_prev:
+      value_prev = value
+      candidate_prev = candidate
+    else:
+      return candidate_prev
+
+  return candidate
+
+
+@wp.func
+def _gradient_descent(
+  geom1_pos: wp.vec3,
+  geom2_pos: wp.vec3,
+  geom1_mat: wp.mat33,
+  geom2_mat: wp.mat33,
+  geom1_radius: wp.float32,
+  geom2_radius: wp.float32,
+  geom1_halfsize: wp.float32,
+  geom2_halfsize: wp.float32,
+  x: wp.vec3,
+  niter: int,
+):
+  for _ in range(niter):
+    x = _gradient_step(
+      geom1_pos,
+      geom2_pos,
+      geom1_mat,
+      geom2_mat,
+      geom1_radius,
+      geom2_radius,
+      geom1_halfsize,
+      geom2_halfsize,
+      x,
+    )
+
+  return x
+
+
+@wp.func
+def _optim(
+  geom1_pos: wp.vec3,
+  geom2_pos: wp.vec3,
+  geom1_mat: wp.mat33,
+  geom2_mat: wp.mat33,
+  geom1_radius: wp.float32,
+  geom2_radius: wp.float32,
+  geom1_halfsize: wp.float32,
+  geom2_halfsize: wp.float32,
+  x0: wp.vec3,
+):
+  """Optimizes the clearance function."""
+  print(geom2_mat)
+  x0 = wp.transpose(geom2_mat) @ (x0 - geom2_pos)
+  pos = _gradient_descent(
+    geom1_pos,
+    geom2_pos,
+    geom1_mat,
+    geom2_mat,
+    geom1_radius,
+    geom2_radius,
+    geom1_halfsize,
+    geom2_halfsize,
+    x0,
+    10,
+  )
+  cylinder1_pos = _cylinder_frame(
+    pos, geom2_pos, geom2_mat, geom1_pos, geom1_mat, geom1_radius, geom1_halfsize
+  )
+  cylinder2_pos = _cylinder(pos, geom2_radius, geom2_halfsize)
+  dist = cylinder1_pos + cylinder2_pos
+
+  grad_cylinder1 = _cylinder_gradient(pos, geom1_radius, geom1_halfsize)
+  grad_cylinder2 = _cylinder_gradient(pos, geom2_radius, geom2_halfsize)
+  relmat = matmul_unroll_33(wp.transpose(geom1_mat), geom2_mat)
+  grad_cylinder1 = relmat @ grad_cylinder1
+
+  pos = geom2_mat @ pos + geom2_pos  # d2 to global frame
+  n = wp.normalize(
+    wp.vec3(
+      grad_cylinder1[0] - grad_cylinder2[0],
+      grad_cylinder1[1] - grad_cylinder2[1],
+      grad_cylinder1[2] - grad_cylinder2[2],
+    )
+  )
+  n = geom2_mat @ n
+  return dist, pos, make_frame(n)
+
+
+@wp.func
 def _plane_sphere(
   plane_normal: wp.vec3, plane_pos: wp.vec3, sphere_pos: wp.vec3, sphere_radius: float
 ):
@@ -213,10 +464,55 @@ def plane_capsule(plane: GeomPlane, cap: GeomCapsule, worldid: int, d: Data):
   return start_index, 2
 
 
+@wp.func
+def cylinder_cylinder(
+  cylinder1: GeomCylinder, cylinder2: GeomCylinder, worldid: int, d: Data
+):
+  """Calculates contacts between a cylinder and a cylinder object."""
+
+  geom1_pos = cylinder1.pos
+  geom2_pos = cylinder2.pos
+  geom1_mat = cylinder1.rot
+  geom2_mat = cylinder2.rot
+  geom1_radius = cylinder1.radius
+  geom2_radius = cylinder2.radius
+  geom1_halfsize = cylinder1.halfsize
+  geom2_halfsize = cylinder2.halfsize
+
+  basis = make_frame(geom2_pos - cylinder1.pos)
+  mid = 0.5 * (geom1_pos + geom2_pos)
+
+  start_index = wp.atomic_add(d.ncon, 0, 4)
+  index = start_index
+  for condim in range(4):
+    r = wp.max(cylinder1.radius, cylinder2.radius) * wp.select(condim < 2, -1.0, 1.0)
+    condim_vector = wp.select(condim == 0 or condim == 2, basis[2], basis[1])
+    x0 = mid + r * condim_vector
+    dist, pos, frame = _optim(
+      geom1_pos,
+      geom2_pos,
+      geom1_mat,
+      geom2_mat,
+      geom1_radius,
+      geom2_radius,
+      geom1_halfsize,
+      geom2_halfsize,
+      x0,
+    )
+    d.contact.dist[index] = dist
+    d.contact.pos[index] = pos
+    d.contact.frame[index] = frame
+    d.contact.worldid[index] = worldid
+    index += 1
+
+  return start_index, 4
+
+
 _collision_functions = {
   (GeomType.PLANE.value, GeomType.SPHERE.value): plane_sphere,
   (GeomType.SPHERE.value, GeomType.SPHERE.value): sphere_sphere,
   (GeomType.PLANE.value, GeomType.CAPSULE.value): plane_capsule,
+  (GeomType.CYLINDER.value, GeomType.CYLINDER.value): cylinder_cylinder,
 }
 
 
@@ -242,14 +538,14 @@ def create_collision_function_kernel(type1, type2):
     geom1 = wp.static(get_info(type1))(
       g1,
       m,
-      d.geom_xpos[g1],
-      d.geom_xmat[g1],
+      d.geom_xpos[worldid],
+      d.geom_xmat[worldid],
     )
     geom2 = wp.static(get_info(type2))(
       g2,
       m,
-      d.geom_xpos[g2],
-      d.geom_xmat[g2],
+      d.geom_xpos[worldid],
+      d.geom_xmat[worldid],
     )
 
     index, ncon = wp.static(_collision_functions[(type1, type2)])(

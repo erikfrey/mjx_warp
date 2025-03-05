@@ -45,3 +45,32 @@ class ConvexTest(absltest.TestCase):
     dx = mjx.put_data(m, d)
 
     mjx.collision(mx, dx)
+
+  _CYLINDER_CYLINDER = """
+    <mujoco>
+      <worldbody>
+        <body pos="0.5 1.0 0" euler="0 0 0">
+          <freejoint/>
+          <geom size="0.5 0.5" type="cylinder"/>
+        </body>
+        <body pos="0.5 1.0 0" euler="0 90 0">
+          <freejoint/>
+          <geom size="0.5 1.0" type="cylinder"/>
+        </body>
+      </worldbody>
+    </mujoco>
+  """
+
+  def test_cylinder_cylinder(self):
+    """Tests cylinder collision with a cylinder."""
+    m = mujoco.MjModel.from_xml_string(self._CYLINDER_CYLINDER)
+    m.opt.jacobian = mujoco.mjtJacobian.mjJAC_DENSE
+    d = mujoco.MjData(m)
+    mujoco.mj_forward(m, d)
+
+    mx = mjx.put_model(m)
+    dx = mjx.put_data(m, d, nconmax=10)
+
+    mjx.collision(mx, dx)
+    print(dx.contact)
+    assert 0 == 1
