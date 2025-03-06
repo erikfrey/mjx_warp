@@ -33,6 +33,7 @@ class SolverTest(parameterized.TestCase):
     nworld: int = 1,
     njmax: int = 512,
     keyframe: int = 0,
+    ls_parallel: bool = False,
   ):
     path = epath.resource_path("mujoco.mjx") / "test_data" / fname
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
@@ -46,15 +47,16 @@ class SolverTest(parameterized.TestCase):
     mujoco.mj_resetDataKeyframe(mjm, mjd, keyframe)
     mujoco.mj_step(mjm, mjd)
     m = io.put_model(mjm)
+    m.opt.ls_parallel = ls_parallel
     d = io.put_data(mjm, mjd, nworld=nworld, njmax=njmax)
     return mjm, mjd, m, d
 
   @parameterized.parameters(
-    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_CG, 25, 5, False),
-    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4, False),
-    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4, True),
+    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_CG, 25, 5, False, False),
+    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4, False, False),
+    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4, True, True),
   )
-  def test_solve(self, cone, solver_, iterations, ls_iterations, sparse):
+  def test_solve(self, cone, solver_, iterations, ls_iterations, sparse, ls_parallel):
     """Tests MJX solve."""
     for keyframe in range(3):
       mjm, mjd, m, d = self._load(
@@ -65,6 +67,7 @@ class SolverTest(parameterized.TestCase):
         iterations=iterations,
         ls_iterations=ls_iterations,
         keyframe=keyframe,
+        ls_parallel=ls_parallel,
       )
 
       def cost(qacc):

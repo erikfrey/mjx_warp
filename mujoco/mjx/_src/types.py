@@ -213,6 +213,7 @@ class Option:
   integrator: int  # mjtIntegrator
   impratio: wp.float32
   is_sparse: bool  # warp only
+  ls_parallel: bool  # warp only
 
 
 @wp.struct

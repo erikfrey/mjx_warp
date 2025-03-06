@@ -46,6 +46,7 @@ _ITERATIONS = flags.DEFINE_integer("iterations", 1, "number of solver iterations
 _LS_ITERATIONS = flags.DEFINE_integer(
   "ls_iterations", 4, "number of linesearch iterations"
 )
+_LS_PARALLEL = flags.DEFINE_bool("ls_parallel", False, "solve with parallel linesearch")
 _IS_SPARSE = flags.DEFINE_bool(
   "is_sparse", True, "if model should create sparse mass matrices"
 )
@@ -104,6 +105,7 @@ def _main(argv: Sequence[str]):
     _SOLVER.value,
     _ITERATIONS.value,
     _LS_ITERATIONS.value,
+    _LS_PARALLEL.value,
     _NCONMAX.value,
     _NJMAX.value,
   )

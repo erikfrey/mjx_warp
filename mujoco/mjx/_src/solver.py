@@ -4,6 +4,15 @@ from . import smooth
 from . import support
 from . import types
 
+MAX_LS_PARALLEL = 64
+
+
+class veclsf(wp.types.vector(length=MAX_LS_PARALLEL, dtype=wp.float32)):
+  pass
+
+
+vecls = veclsf
+
 
 @wp.struct
 class Context:
@@ -32,6 +41,9 @@ class Context:
   beta_num: wp.array(dtype=wp.float32, ndim=1)
   beta_den: wp.array(dtype=wp.float32, ndim=1)
   done: wp.array(dtype=wp.int32, ndim=1)
+  alpha_candidate: wp.array(dtype=wp.float32, ndim=1)
+  cost_candidate: wp.array(dtype=veclsf, ndim=1)
+  quad_total_candidate: wp.array(dtype=wp.vec3f, ndim=2)
 
 
 def _context(m: types.Model, d: types.Data) -> Context:
@@ -61,6 +73,9 @@ def _context(m: types.Model, d: types.Data) -> Context:
   ctx.beta_num = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.beta_den = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.done = wp.empty(shape=(d.nworld,), dtype=wp.int32)
+  ctx.alpha_candidate = wp.empty(shape=(MAX_LS_PARALLEL,), dtype=wp.float32)
+  ctx.cost_candidate = wp.empty(shape=(d.nworld,), dtype=veclsf)
+  ctx.quad_total_candidate = wp.empty(shape=(d.nworld, MAX_LS_PARALLEL), dtype=wp.vec3f)
 
   return ctx
 
@@ -378,75 +393,7 @@ def _in_bracket(x: float, y: float) -> bool:
   return (x < y) and (y < 0.0) or (x > y) and (y > 0.0)
 
 
-def _linesearch(m: types.Model, d: types.Data, ctx: Context):
-  @wp.kernel
-  def _gtol(ctx: Context, m: types.Model):
-    worldid = wp.tid()
-    smag = (
-      wp.math.sqrt(ctx.search_dot[worldid])
-      * m.stat.meaninertia
-      * float(wp.max(1, m.nv))
-    )
-    ctx.gtol[worldid] = m.opt.tolerance * m.opt.ls_tolerance * smag
-
-  wp.launch(_gtol, dim=(d.nworld,), inputs=[ctx, m])
-
-  # mv = qM @ search
-  support.mul_m(m, d, ctx.mv, ctx.search)
-
-  # jv = efc_J @ search
-  ctx.jv.zero_()
-
-  @wp.kernel
-  def _jv(ctx: Context, d: types.Data):
-    efcid, dofid = wp.tid()
-
-    if efcid >= d.nefc_total[0]:
-      return
-
-    worldid = d.efc_worldid[efcid]
-    wp.atomic_add(
-      ctx.jv,
-      efcid,
-      d.efc_J[efcid, dofid] * ctx.search[worldid, dofid],
-    )
-
-  wp.launch(_jv, dim=(d.njmax, m.nv), inputs=[ctx, d])
-
-  # prepare quadratics
-  # quad_gauss = [gauss, search.T @ Ma - search.T @ qfrc_smooth, 0.5 * search.T @ mv]
-  ctx.quad_gauss.zero_()
-
-  @wp.kernel
-  def _quad_gauss(ctx: Context, m: types.Model, d: types.Data):
-    worldid, dofid = wp.tid()
-    search = ctx.search[worldid, dofid]
-    quad_gauss = wp.vec3(
-      ctx.gauss[worldid] / float(m.nv),
-      search * (ctx.Ma[worldid, dofid] - d.qfrc_smooth[worldid, dofid]),
-      0.5 * search * ctx.mv[worldid, dofid],
-    )
-    wp.atomic_add(ctx.quad_gauss, worldid, quad_gauss)
-
-  wp.launch(_quad_gauss, dim=(d.nworld, m.nv), inputs=[ctx, m, d])
-
-  # quad = [0.5 * Jaref * Jaref * efc_D, jv * Jaref * efc_D, 0.5 * jv * jv * efc_D]
-  @wp.kernel
-  def _quad(ctx: Context, d: types.Data):
-    efcid = wp.tid()
-
-    if efcid >= d.nefc_total[0]:
-      return
-
-    Jaref = ctx.Jaref[efcid]
-    jv = ctx.jv[efcid]
-    efc_D = d.efc_D[efcid]
-    ctx.quad[efcid][0] = 0.5 * Jaref * Jaref * efc_D
-    ctx.quad[efcid][1] = jv * Jaref * efc_D
-    ctx.quad[efcid][2] = 0.5 * jv * jv * efc_D
-
-  wp.launch(_quad, dim=(d.njmax), inputs=[ctx, d])
-
+def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   # initialize interval
   ls_ctx = _create_lscontext(m, d, ctx)
 
@@ -501,6 +448,18 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 
   ls_ctx.swap.fill_(1)
   ls_ctx.ls_iter.fill_(0)
+
+  @wp.kernel
+  def _gtol(ctx: Context, m: types.Model):
+    worldid = wp.tid()
+    smag = (
+      wp.math.sqrt(ctx.search_dot[worldid])
+      * m.stat.meaninertia
+      * float(wp.max(1, m.nv))
+    )
+    ctx.gtol[worldid] = m.opt.tolerance * m.opt.ls_tolerance * smag
+
+  wp.launch(_gtol, dim=(d.nworld,), inputs=[ctx, m])
 
   for i in range(m.opt.ls_iterations):
 
@@ -692,6 +651,128 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 
   wp.launch(_alpha, dim=(d.nworld,), inputs=[ctx, ls_ctx])
 
+
+def _linesearch_parallel(m: types.Model, d: types.Data, ctx: Context):
+  @wp.kernel
+  def _quad_total(ctx: Context, m: types.Model):
+    worldid, alphaid = wp.tid()
+
+    if alphaid >= m.opt.ls_iterations:
+      return
+
+    ctx.quad_total_candidate[worldid, alphaid] = ctx.quad_gauss[worldid]
+
+  wp.launch(_quad_total, dim=(d.nworld, MAX_LS_PARALLEL), inputs=[ctx, m])
+
+  @wp.kernel
+  def _quad_total_candidate(ctx: Context, m: types.Model, d: types.Data):
+    efcid, alphaid = wp.tid()
+
+    if alphaid >= m.opt.ls_iterations:
+      return
+
+    if efcid >= d.nefc_total[0]:
+      return
+
+    worldid = d.efc_worldid[efcid]
+    x = ctx.Jaref[efcid] + ctx.alpha_candidate[alphaid] * ctx.jv[efcid]
+    # TODO(team): active and conditionally active constraints
+    if x < 0.0:
+      wp.atomic_add(ctx.quad_total_candidate[worldid], alphaid, ctx.quad[efcid])
+
+  wp.launch(_quad_total_candidate, dim=(d.njmax, MAX_LS_PARALLEL), inputs=[ctx, m, d])
+
+  @wp.kernel
+  def _cost_alpha(ctx: Context, m: types.Model):
+    worldid, alphaid = wp.tid()
+
+    if alphaid >= m.opt.ls_iterations:
+      ctx.cost_candidate[worldid][alphaid] = wp.inf
+      return
+
+    alpha = ctx.alpha_candidate[alphaid]
+    alpha_sq = alpha * alpha
+    quad_total0 = ctx.quad_total_candidate[worldid, alphaid][0]
+    quad_total1 = ctx.quad_total_candidate[worldid, alphaid][1]
+    quad_total2 = ctx.quad_total_candidate[worldid, alphaid][2]
+
+    ctx.cost_candidate[worldid][alphaid] = (
+      alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
+    )
+
+  wp.launch(_cost_alpha, dim=(d.nworld, MAX_LS_PARALLEL), inputs=[ctx, m])
+
+  @wp.kernel
+  def _best_alpha(ctx: Context):
+    worldid = wp.tid()
+    bestid = wp.argmin(ctx.cost_candidate[worldid])
+    ctx.alpha[worldid] = ctx.alpha_candidate[bestid]
+
+  wp.launch(_best_alpha, dim=(d.nworld), inputs=[ctx])
+
+
+def _linesearch(m: types.Model, d: types.Data, ctx: Context):
+  # mv = qM @ search
+  support.mul_m(m, d, ctx.mv, ctx.search)
+
+  # jv = efc_J @ search
+  ctx.jv.zero_()
+
+  @wp.kernel
+  def _jv(ctx: Context, d: types.Data):
+    efcid, dofid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+
+    worldid = d.efc_worldid[efcid]
+    wp.atomic_add(
+      ctx.jv,
+      efcid,
+      d.efc_J[efcid, dofid] * ctx.search[worldid, dofid],
+    )
+
+  wp.launch(_jv, dim=(d.njmax, m.nv), inputs=[ctx, d])
+
+  # prepare quadratics
+  # quad_gauss = [gauss, search.T @ Ma - search.T @ qfrc_smooth, 0.5 * search.T @ mv]
+  ctx.quad_gauss.zero_()
+
+  @wp.kernel
+  def _quad_gauss(ctx: Context, m: types.Model, d: types.Data):
+    worldid, dofid = wp.tid()
+    search = ctx.search[worldid, dofid]
+    quad_gauss = wp.vec3(
+      ctx.gauss[worldid] / float(m.nv),
+      search * (ctx.Ma[worldid, dofid] - d.qfrc_smooth[worldid, dofid]),
+      0.5 * search * ctx.mv[worldid, dofid],
+    )
+    wp.atomic_add(ctx.quad_gauss, worldid, quad_gauss)
+
+  wp.launch(_quad_gauss, dim=(d.nworld, m.nv), inputs=[ctx, m, d])
+
+  # quad = [0.5 * Jaref * Jaref * efc_D, jv * Jaref * efc_D, 0.5 * jv * jv * efc_D]
+  @wp.kernel
+  def _quad(ctx: Context, d: types.Data):
+    efcid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+
+    Jaref = ctx.Jaref[efcid]
+    jv = ctx.jv[efcid]
+    efc_D = d.efc_D[efcid]
+    ctx.quad[efcid][0] = 0.5 * Jaref * Jaref * efc_D
+    ctx.quad[efcid][1] = jv * Jaref * efc_D
+    ctx.quad[efcid][2] = 0.5 * jv * jv * efc_D
+
+  wp.launch(_quad, dim=(d.njmax), inputs=[ctx, d])
+
+  if m.opt.ls_parallel:
+    _linesearch_parallel(m, d, ctx)
+  else:
+    _linesearch_iterative(m, d, ctx)
+
   @wp.kernel
   def _qacc_ma(ctx: Context, d: types.Data):
     worldid, dofid = wp.tid()
@@ -722,6 +803,21 @@ def solve(m: types.Model, d: types.Data):
 
   ctx = _context(m, d)
   _create_context(ctx, m, d, grad=True)
+
+  # alpha candidates
+  # TODO(team): preprocess candidate alphas
+  if m.opt.ls_parallel:
+
+    @wp.kernel
+    def _alpha_candidate(ctx: Context, m: types.Model):
+      tid = wp.tid()
+
+      if tid >= m.opt.ls_iterations:
+        return
+
+      ctx.alpha_candidate[tid] = float(tid) / float(wp.max(m.opt.ls_iterations - 1, 1))
+
+    wp.launch(_alpha_candidate, dim=(MAX_LS_PARALLEL), inputs=[ctx, m])
 
   for i in range(m.opt.iterations):
     _linesearch(m, d, ctx)

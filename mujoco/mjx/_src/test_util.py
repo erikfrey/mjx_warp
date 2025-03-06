@@ -54,6 +54,7 @@ def benchmark(
   solver: str = "cg",
   iterations: int = 1,
   ls_iterations: int = 4,
+  ls_parallel: bool = False,
   nconmax: int = -1,
   njmax: int = -1,
 ) -> Tuple[float, float, int]:
@@ -68,6 +69,7 @@ def benchmark(
   mjm.opt.ls_iterations = ls_iterations
 
   m = io.put_model(mjm)
+  m.opt.ls_parallel = ls_parallel
   d = io.put_data(mjm, mjd, nworld=batch_size, nconmax=nconmax, njmax=njmax)
 
   jit_beg = time.perf_counter()
