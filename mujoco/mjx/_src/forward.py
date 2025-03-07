@@ -166,7 +166,6 @@ def euler(m: Model, d: Data):
   # integrate damping implicitly
 
   def eulerdamp_sparse(m: Model, d: Data):
-    
     @wp.kernel
     def add_damping_sum_qfrc_kernel_sparse(m: Model, d: Data):
       worldId, tid = wp.tid()
@@ -191,10 +190,11 @@ def euler(m: Model, d: Data):
     )
 
   def eulerdamp_fused_dense(m: Model, d: Data):
-
     def tile_eulerdamp(adr: int, size: int, tilesize: int):
       @wp.kernel
-      def eulerdamp(m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int):
+      def eulerdamp(
+        m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
+      ):
         worldid, nodeid = wp.tid()
         dofid = m.qLD_tile[leveladr + nodeid]
         M_tile = wp.tile_load(
@@ -204,8 +204,12 @@ def euler(m: Model, d: Data):
         damping_scaled = damping_tile * m.opt.timestep
         qm_integration_tile = wp.tile_diag_add(M_tile, damping_scaled)
 
-        qfrc_smooth_tile = wp.tile_load(d.qfrc_smooth[worldid], shape=(tilesize,), offset=(dofid,))
-        qfrc_constraint_tile = wp.tile_load(d.qfrc_constraint[worldid], shape=(tilesize,), offset=(dofid,))
+        qfrc_smooth_tile = wp.tile_load(
+          d.qfrc_smooth[worldid], shape=(tilesize,), offset=(dofid,)
+        )
+        qfrc_constraint_tile = wp.tile_load(
+          d.qfrc_constraint[worldid], shape=(tilesize,), offset=(dofid,)
+        )
 
         qfrc_tile = qfrc_smooth_tile + qfrc_constraint_tile
 
@@ -225,11 +229,11 @@ def euler(m: Model, d: Data):
       tile_eulerdamp(beg, end - beg, int(qLD_tilesize[i]))
 
   if not m.opt.disableflags & DisableBit.EULERDAMP.value:
-    if (m.opt.is_sparse):
+    if m.opt.is_sparse:
       eulerdamp_sparse(m, d)
     else:
       eulerdamp_fused_dense(m, d)
-    
+
     _advance(m, d, d.act_dot, d.qacc_integration)
   else:
     _advance(m, d, d.act_dot, d.qacc)
