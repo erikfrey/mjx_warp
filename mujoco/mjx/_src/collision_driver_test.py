@@ -83,5 +83,7 @@ class ConvexTest(parameterized.TestCase):
     mujoco.mj_step(m, d)
     actual_dist = dx.contact.dist.numpy()[0]
     actual_pos = dx.contact.pos.numpy()[0, :]
+    actual_frame = dx.contact.frame.numpy()[0].flatten()
     np.testing.assert_array_almost_equal(actual_dist, d.contact.dist[0], 4)
     np.testing.assert_array_almost_equal(actual_pos, d.contact.pos[0], 4)
+    np.testing.assert_array_almost_equal(actual_frame, d.contact.frame[0], 4)
