@@ -20,6 +20,18 @@ from .support import where
 
 
 @wp.func
+def matmul_unroll_33(a: wp.mat33, b: wp.mat33):
+  c = wp.mat33(0.0)
+  for i in range(3):
+    for j in range(3):
+      s = 0.0
+      for k in range(3):
+        s += a[i, k] * b[k, j]
+      c[i, j] = s
+  return c
+
+
+@wp.func
 def mul_quat(u: wp.quat, v: wp.quat) -> wp.quat:
   return wp.quat(
     u[0] * v[0] - u[1] * v[1] - u[2] * v[2] - u[3] * v[3],
