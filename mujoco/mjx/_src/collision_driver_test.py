@@ -18,9 +18,6 @@ import mujoco
 from mujoco import mjx
 import numpy as np
 from absl.testing import parameterized
-import mujoco
-import numpy as np
-
 
 class ConvexTest(parameterized.TestCase):
   """Tests the convex contact functions."""
@@ -82,7 +79,6 @@ class ConvexTest(parameterized.TestCase):
     mx = mjx.put_model(m)
     dx = mjx.put_data(m, d)
     mjx.collision(mx, dx)
-    m.opt.enableflags |= mujoco.mjtEnableBit.mjENBL_NATIVECCD
     mujoco.mj_step(m, d)
     actual_dist = dx.contact.dist.numpy()[0]
     actual_pos = dx.contact.pos.numpy()[0, :]
