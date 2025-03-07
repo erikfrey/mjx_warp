@@ -21,10 +21,11 @@ from absl.testing import parameterized
 import mujoco
 import numpy as np
 
-class ConvexTest(parameterized.TestCase):
-    """Tests the convex contact functions."""
 
-    _BOX_PLANE = """
+class ConvexTest(parameterized.TestCase):
+  """Tests the convex contact functions."""
+
+  _BOX_PLANE = """
         <mujoco>
           <worldbody>
             <geom size="40 40 40" type="plane"/>
@@ -36,7 +37,7 @@ class ConvexTest(parameterized.TestCase):
         </mujoco>
         """
 
-    _CAPSULE_CAPSULE = """
+  _CAPSULE_CAPSULE = """
         <mujoco model="two_capsules">
           <worldbody>
             <body>
@@ -53,7 +54,7 @@ class ConvexTest(parameterized.TestCase):
         </mujoco>
         """
 
-    _SPHERE_SPHERE = """
+  _SPHERE_SPHERE = """
         <mujoco>
           <worldbody>
             <body>
@@ -68,22 +69,22 @@ class ConvexTest(parameterized.TestCase):
         </mujoco>
         """
 
-    @parameterized.parameters(
-        ( _BOX_PLANE),
-        ( _SPHERE_SPHERE),
-        (_CAPSULE_CAPSULE),
-    )
-    def test_convex_collision(self, xml_string):
-        """Tests convex collision with different geometries."""
-        m = mujoco.MjModel.from_xml_string(xml_string)
-        d = mujoco.MjData(m)
-        mujoco.mj_forward(m, d)
-        mx = mjx.put_model(m)
-        dx = mjx.put_data(m, d)
-        mjx.collision(mx, dx)
-        m.opt.enableflags |= mujoco.mjtEnableBit.mjENBL_NATIVECCD
-        mujoco.mj_step(m, d)
-        actual_dist = dx.contact.dist.numpy()[0]
-        actual_pos = dx.contact.pos.numpy()[0, :]
-        np.testing.assert_array_almost_equal(actual_dist, d.contact.dist[0], 4)
-        np.testing.assert_array_almost_equal(actual_pos, d.contact.pos[0], 4)
+  @parameterized.parameters(
+    (_BOX_PLANE),
+    (_SPHERE_SPHERE),
+    (_CAPSULE_CAPSULE),
+  )
+  def test_convex_collision(self, xml_string):
+    """Tests convex collision with different geometries."""
+    m = mujoco.MjModel.from_xml_string(xml_string)
+    d = mujoco.MjData(m)
+    mujoco.mj_forward(m, d)
+    mx = mjx.put_model(m)
+    dx = mjx.put_data(m, d)
+    mjx.collision(mx, dx)
+    m.opt.enableflags |= mujoco.mjtEnableBit.mjENBL_NATIVECCD
+    mujoco.mj_step(m, d)
+    actual_dist = dx.contact.dist.numpy()[0]
+    actual_pos = dx.contact.pos.numpy()[0, :]
+    np.testing.assert_array_almost_equal(actual_dist, d.contact.dist[0], 4)
+    np.testing.assert_array_almost_equal(actual_pos, d.contact.pos[0], 4)
