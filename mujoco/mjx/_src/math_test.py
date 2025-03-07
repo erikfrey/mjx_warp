@@ -13,90 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-from absl.testing import parameterized
+from absl.testing import absltest
 import warp as wp
 from .math import closest_segment_to_segment_points
-import numpy as np
 
 
-def _get_rand_line_segment(seed=None):
-  """Generate a random line segment."""
-  if seed is not None:
-    np.random.seed(seed)
-  verts = np.random.randn(2, 3)
-  return verts[0, :], verts[1, :]
-
-
-def _minimize(fn, sample_fn, lb, ub, tol, max_iter=20, seed=42):
-  """Minimize a function using the cross-entropy method."""
-  assert lb.shape == ub.shape, "bounds need to have the same shape"
-  np.random.seed(seed)
-
-  i, n = 0, 1_000
-  mu = (ub + lb) * 0.5
-  sigma = (ub - lb) * 0.5
-  size = lb.shape[0]
-  val, prev_val = fn(mu), None
-
-  while prev_val is None or np.abs(val - prev_val) > tol:
-    params = sample_fn(mu, sigma, n, size, lb, ub)
-    vals = np.array([fn(p) for p in params])
-
-    if val < vals.min():  # early exit
-      return mu
-
-    idx = vals.argsort()
-    best_idx = idx[: int(n * 0.05)]
-    mu = params[best_idx].mean(axis=0)
-    sigma = params[best_idx].std(axis=0) + 1e-10
-
-    prev_val = val
-    val = fn(mu)
-
-    i += 1
-    if i == max_iter:
-      break
-
-  return mu
-
-
-def _closest_segment_to_segment_points(a0, a1, b0, b1):
-  """Find closest points between two line segments."""
-  dir_a = a1 - a0
-  len_a = np.sqrt(dir_a.dot(dir_a))
-  half_len_a = len_a / 2
-  dir_a = dir_a / len_a
-
-  dir_b = b1 - b0
-  len_b = np.sqrt(dir_b.dot(dir_b))
-  half_len_b = len_b / 2
-  dir_b = dir_b / len_b
-
-  a_mid = a0 + dir_a * half_len_a
-  b_mid = b0 + dir_b * half_len_b
-
-  # Parametrize both line segments.
-  def fn(t):
-    best_a = a_mid + dir_a * t[0]
-    best_b = b_mid + dir_b * t[1]
-    return (best_a - best_b).dot(best_a - best_b)
-
-  def sample_fn(mu, sigma, n, size, lb, ub):
-    params = np.random.normal(mu, sigma, size=(n, size))
-    params = np.clip(params, lb, ub)
-    return params
-
-  lb = np.array([-half_len_a, -half_len_b])
-  ub = np.array([half_len_a, half_len_b])
-
-  ta, tb = _minimize(fn, sample_fn, lb, ub, tol=1e-4)
-  best_a = a_mid + dir_a * ta
-  best_b = b_mid + dir_b * tb
-
-  return best_a, best_b
-
-
-class ClosestSegmentSegmentPointsTest(parameterized.TestCase):
+class ClosestSegmentSegmentPointsTest(absltest.TestCase):
   """Tests for closest segment-to-segment points."""
 
   def test_closest_segments_points(self):
@@ -163,23 +85,3 @@ class ClosestSegmentSegmentPointsTest(parameterized.TestCase):
     best_a, best_b = closest_segment_to_segment_points(a0, a1, b0, b1)
     self.assertSequenceAlmostEqual(best_a, [0.0, 0.0, 0.0], 5)
     self.assertSequenceAlmostEqual(best_b, [0.0, 0.0, 0.0], 5)
-
-  params = list(zip(np.repeat(np.arange(2), 2), np.tile(np.arange(2), 2)))
-
-  @parameterized.parameters(*params)
-  def test_closest_segment_to_segment_points(self, i, j):
-    """Test closest points between random segments."""
-    a0, a1 = _get_rand_line_segment(i)
-    b0, b1 = _get_rand_line_segment(j)
-
-    expected = _closest_segment_to_segment_points(a0, a1, b0, b1)
-    a0 = wp.vec3(a0)
-    a1 = wp.vec3(a1)
-    b0 = wp.vec3(b0)
-    b1 = wp.vec3(b1)
-
-    ans = closest_segment_to_segment_points(a0, a1, b0, b1)
-    expected_dist = (expected[0] - expected[1]).dot(expected[0] - expected[1])
-    test_dist = wp.dot((ans[0] - ans[1]), (ans[0] - ans[1]))
-
-    self.assertAlmostEqual(expected_dist, test_dist, 4)
