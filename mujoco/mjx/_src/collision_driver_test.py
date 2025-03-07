@@ -19,6 +19,7 @@ from mujoco import mjx
 import numpy as np
 from absl.testing import parameterized
 
+
 class ConvexTest(parameterized.TestCase):
   """Tests the convex contact functions."""
 
