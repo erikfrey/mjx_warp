@@ -32,47 +32,62 @@ Should print out something like `XX passed in XX.XXs` at the end!
 Benchmark as follows:
 
 ```bash
-mjx-testspeed --function=forward --is_sparse=True --mjcf=humanoid/humanoid.xml --batch_size=8192
+mjx-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192
 ```
 
-Some relevant benchmarks on an NVIDIA GeForce RTX 4090:
+To get a full trace of the physics steps (e.g. timings of the subcomponents) run the following:
 
-## forward steps / sec (smooth dynamics only)
+```bash
+mjx-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192 --event_trace=True
+```
 
-27 dofs per humanoid, 8k batch size.
+`humanoid.xml` has been carefully optimized for MJX in the following ways:
 
-| Num Humanoids   | MJX    |  mjWarp dense |  mjWarp sparse |
-| ----------------| -------| ------------- | -------------- |
-| 1               | 7.9M   |  15.6M        | 13.7M          |
-| 2               | 2.6M   |  7.4M         | 7.8M           |
-| 3               | 2.2M   |  4.6M         | 5.3M           |
-| 4               | 1.5M   |  3.3M         | 4.1M           |
-| 5               | 1.1M   |  ❌           | 3.2M           |
+* Newton solver iterations are capped at 1, linesearch iterations capped at 4
+* Only foot<>floor collisions are turned on, producing at most 8 contact points
+* Adding a damping term in the Euler integrator (which invokes another `factor_m` and `solve_m`) is disabled
 
-# Ideas for what to try next
+By comparing MJWarp to MJX on this model, we are comparing MJWarp to the very best that MJX can do.
 
-## 1. Unroll steps
+For many (most) MuJoCo models, particularly ones that haven't been carefully tuned, MJX will
+do much worse.
 
-In the Pure JAX benchmark, we can tell JAX to unroll some number of FK steps (in the benchmarks above, `unroll=4`).  This has a big impact on performance.  If we change `unroll` from 4 to 1, pure JAX performance at 8k batch drops from 50M to 33M steps/sec.
+## physics steps / sec
 
-Is there some way that we can improve Warp performance in the same way?  If I know ahead of time that I am going to call FK in a loop 1000 times, can I somehow inject unroll primitives?
+NVIDIA GeForce RTX 4090, 27 dofs, ncon=8, 8k batch size.
 
-## 2. Different levels of parallelism
+```
+Summary for 8192 parallel rollouts
 
-The current approach parallelizes over body kinematic tree depth.  We could go either direction: remove body parallism (fewer kernel launches), or parallelize over joints instead (more launches, more parallelism).
+ Total JIT time: 1.25 s
+ Total simulation time: 4.46 s
+ Total steps per second: 1,838,765
+ Total realtime factor: 9,193.83 x
+ Total time per step: 543.84 ns
 
-## 3. Tiling
+Event trace:
 
-It looks like a thing!  Should we use it?  Will it help?
-
-## 4. Quaternions
-
-Why oh why did Warp make quaternions x,y,z,w?  In order to be obstinate I wrote my own quaternion math.  Is this slower than using the Warp quaternion primitives?
-
-## 5. `wp.static`
-
-Haven't tried this at all - curious to see if it helps.
-
-## 6. Other stuff?
-
-Should I be playing with `block_dim`?  Is my method for timing OK or did I misunderstand how `wp.synchronize` works?  Is there something about allocating that I should be aware of?  What am I not thinking of?
+step: 540.35                 (MJX: 316.58 ns)
+  forward: 538.04
+    fwd_position: 239.87
+      kinematics: 12.83      (MJX:  16.45 ns)
+      com_pos: 8.02          (MJX:  12.37 ns)
+      crb: 12.32             (MJX:  27.91 ns)
+      factor_m: 6.50         (MJX:  27.48 ns)
+      collision: 197.79      (MJX:   1.23 ns)
+      make_constraint: 6.42  (MJX:  42.39 ns)
+      transmission: 1.22     (MJX:   3.54 ns)
+    fwd_velocity: 29.75
+      com_vel: 8.61          (MJX:   9.38 ns)
+      passive: 1.12          (MJX:   3.22 ns)
+      rne: 14.00             (MJX:  16.75 ns)
+    fwd_actuation: 2.76      (MJX:   3.93 ns)
+    fwd_acceleration: 11.75
+      xfrc_accumulate: 3.76  (MJX:   6.81 ns)
+      solve_m: 6.92          (MJX:   8.88 ns)
+    solve: 252.87            (MJX: 153.29 ns)
+      mul_m: 6.08
+      _linesearch_iterative: 40.41
+        mul_m: 3.66
+  euler: 1.79               (MJX:    3.78 ns)
+```

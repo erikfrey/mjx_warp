@@ -26,6 +26,7 @@ import mujoco
 
 from . import io
 from . import types
+from . import warp_util
 
 
 def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
@@ -44,19 +45,29 @@ def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
   return mjm, mjd, m, d
 
 
+def _sum(stack1, stack2):
+  ret = {}
+  for k in stack1:
+    times1, sub_stack1 = stack1[k]
+    times2, sub_stack2 = stack2[k]
+    times = [t1 + t2 for t1, t2 in zip(times1, times2)]
+    ret[k] = (times, _sum(sub_stack1, sub_stack2))
+  return ret
+
+
 def benchmark(
   fn: Callable[[types.Model, types.Data], None],
   mjm: mujoco.MjModel,
   mjd: mujoco.MjData,
   nstep: int = 1000,
   batch_size: int = 1024,
-  unroll_steps: int = 1,
   solver: str = "cg",
   iterations: int = 1,
   ls_iterations: int = 4,
   nconmax: int = -1,
   njmax: int = -1,
-) -> Tuple[float, float, int]:
+  event_trace: bool = False,
+) -> Tuple[float, float, dict, int]:
   """Benchmark a model."""
 
   if solver == "cg":
@@ -79,17 +90,23 @@ def benchmark(
   jit_end = time.perf_counter()
   jit_duration = jit_end - jit_beg
   wp.synchronize()
+  trace = {}
 
-  # capture the whole smooth.kinematic() function as a CUDA graph
-  with wp.ScopedCapture() as capture:
-    fn(m, d)
-  graph = capture.graph
+  with warp_util.EventTracer(enabled=event_trace) as tracer:
+    # capture the whole smooth.kinematic() function as a CUDA graph
+    with wp.ScopedCapture() as capture:
+      fn(m, d)
+    graph = capture.graph
 
-  run_beg = time.perf_counter()
-  for _ in range(nstep):
-    wp.capture_launch(graph)
-  wp.synchronize()
-  run_end = time.perf_counter()
-  run_duration = run_end - run_beg
+    run_beg = time.perf_counter()
+    for _ in range(nstep):
+      wp.capture_launch(graph)
+      if trace:
+        trace = _sum(trace, tracer.trace())
+      else:
+        trace = tracer.trace()
+    wp.synchronize()
+    run_end = time.perf_counter()
+    run_duration = run_end - run_beg
 
-  return jit_duration, run_duration, batch_size * nstep
+  return jit_duration, run_duration, trace, batch_size * nstep

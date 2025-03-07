@@ -15,11 +15,12 @@
 
 import warp as wp
 
-from .types import Model
+from .warp_util import event_scope
 from .types import Data
-from .types import MJ_MINVAL
-from .types import vec5
 from .types import DisableBit
+from .types import MJ_MINVAL
+from .types import Model
+from .types import vec5
 from .support import where
 from .support import group_key
 
@@ -506,6 +507,7 @@ def get_contact_solver_params(m: Model, d: Data):
   # TODO(team): do we need condim sorting, deepest penetrating contact here?
 
 
+@event_scope
 def collision(m: Model, d: Data):
   """Collision detection."""
 

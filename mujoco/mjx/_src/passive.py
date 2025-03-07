@@ -4,8 +4,10 @@ from . import math
 from .types import Model
 from .types import Data
 from .types import JointType
+from .warp_util import event_scope
 
 
+@event_scope
 def passive(m: Model, d: Data):
   """Adds all passive forces."""
 

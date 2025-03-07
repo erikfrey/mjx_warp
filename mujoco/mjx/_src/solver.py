@@ -3,6 +3,7 @@ import mujoco
 from . import smooth
 from . import support
 from . import types
+from .warp_util import event_scope
 
 
 @wp.struct
@@ -256,11 +257,9 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
 
       worldid = d.efc_worldid[efcid]
       # TODO(team): sparse efc_J
-      wp.atomic_add(
-        ctx.h[worldid, dofi],
-        dofj,
-        d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D,
-      )
+      # h[worldid, dofi, dofj] += J[efcid, dofi] * J[efcid, dofj] * D[efcid]
+      res = d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D
+      wp.atomic_add(ctx.h[worldid, dofi], dofj, res)
 
     wp.launch(_JTDAJ, dim=(d.njmax, m.dof_tri_row.size), inputs=[ctx, m, d])
 
@@ -302,6 +301,7 @@ def _safe_div(x: wp.float32, y: wp.float32) -> wp.float32:
   return x / wp.select(y == 0.0, y, types.MJ_MINVAL)
 
 
+@event_scope
 def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   @wp.kernel
   def _gtol(m: types.Model, ctx: Context):
@@ -661,6 +661,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   wp.launch(_jaref, dim=(d.njmax,), inputs=[d, ctx])
 
 
+@event_scope
 def solve(m: types.Model, d: types.Data):
   """Finds forces that satisfy constraints."""
 

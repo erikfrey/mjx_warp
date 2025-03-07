@@ -40,14 +40,13 @@ _BASE_PATH = flags.DEFINE_string(
 )
 _NSTEP = flags.DEFINE_integer("nstep", 1000, "number of steps per rollout")
 _BATCH_SIZE = flags.DEFINE_integer("batch_size", 4096, "number of parallel rollouts")
-_UNROLL = flags.DEFINE_integer("unroll", 1, "loop unroll length")
-_SOLVER = flags.DEFINE_enum("solver", "cg", ["cg", "newton"], "constraint solver")
+_SOLVER = flags.DEFINE_enum("solver", "newton", ["cg", "newton"], "constraint solver")
 _ITERATIONS = flags.DEFINE_integer("iterations", 1, "number of solver iterations")
 _LS_ITERATIONS = flags.DEFINE_integer(
   "ls_iterations", 4, "number of linesearch iterations"
 )
 _IS_SPARSE = flags.DEFINE_bool(
-  "is_sparse", True, "if model should create sparse mass matrices"
+  "is_sparse", False, "if model should create sparse mass matrices"
 )
 _NCONMAX = flags.DEFINE_integer(
   "nconmax", -1, "Maximum number of contacts in a batch physics step."
@@ -61,6 +60,7 @@ _OUTPUT = flags.DEFINE_enum(
 _CLEAR_KERNEL_CACHE = flags.DEFINE_bool(
   "clear_kernel_cache", False, "Clear kernel cache (to calculate full JIT time)"
 )
+_EVENT_TRACE = flags.DEFINE_bool("event_trace", False, "Provide a full event trace")
 
 
 def _main(argv: Sequence[str]):
@@ -90,22 +90,22 @@ def _main(argv: Sequence[str]):
     wp.clear_kernel_cache()
 
   print(
-    f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value}"
+    f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value} solver: {_SOLVER.value}"
   )
   print(f"Data ncon: {d.ncon} nefc: {d.nefc}")
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
-  jit_time, run_time, steps = mjx.benchmark(
+  jit_time, run_time, trace, steps = mjx.benchmark(
     mjx.__dict__[_FUNCTION.value],
     m,
     d,
     _NSTEP.value,
     _BATCH_SIZE.value,
-    _UNROLL.value,
     _SOLVER.value,
     _ITERATIONS.value,
     _LS_ITERATIONS.value,
     _NCONMAX.value,
     _NJMAX.value,
+    _EVENT_TRACE.value,
   )
 
   name = argv[0]
@@ -118,6 +118,24 @@ Summary for {_BATCH_SIZE.value} parallel rollouts
  Total steps per second: {steps / run_time:,.0f}
  Total realtime factor: {steps * m.opt.timestep / run_time:,.2f} x
  Total time per step: {1e9 * run_time / steps:.2f} ns""")
+    if trace:
+      print("\nEvent trace:\n")
+
+      def _print_trace(trace, indent):
+        for k, v in trace.items():
+          times, sub_trace = v
+          if len(times) == 1:
+            print("  " * indent + f"{k}: {1e6 * times[0] / steps:.2f}")
+          else:
+            print("  " * indent + f"{k}: [ ", end="")
+            for i in range(len(times)):
+              print(f"{1e6 * times[i] / steps:.2f}", end="")
+              print(", " if i < len(times) - 1 else " ", end="")
+            print("]")
+          _print_trace(sub_trace, indent + 1)
+
+      _print_trace(trace, 0)
+
   elif _OUTPUT.value == "tsv":
     name = name.split("/")[-1].replace("testspeed_", "")
     print(f"{name}\tjit: {jit_time:.2f}s\tsteps/second: {steps / run_time:.0f}")
