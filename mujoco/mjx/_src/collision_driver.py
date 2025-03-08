@@ -73,7 +73,7 @@ def transform_aabb(
   aabb.min = wp.vec3(1000000000.0, 1000000000.0, 1000000000.0)
 
   for i in range(8):
-    corner = wp.vec3(aabb_size.x, aabb_size.y, aabb_size.z)
+    corner = wp.vec3(aabb_size.x * 0.5, aabb_size.y * 0.5, aabb_size.z * 0.5)
     if i % 2 == 0:
       corner.x = -corner.x
     if (i // 2) % 2 == 0:

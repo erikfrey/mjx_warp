@@ -289,10 +289,50 @@ def plane_capsule(
   write_contact(d, dist2, pos2, frame, margin, geom_indices, worldid)
 
 
+@wp.func
+def distance_point_plane(plane_normal: wp.vec3, plane_pos: wp.vec3, point: wp.vec3):
+  plane_normal = wp.normalize(plane_normal)
+  dist = wp.dot(point - plane_pos, plane_normal)
+  return dist, plane_pos - plane_normal * dist
+
+
+@wp.func
+def plane_box(
+  plane: GeomPlane,
+  box: GeomBox,
+  worldid: int,
+  d: Data,
+  margin: float,
+  geom_indices: wp.vec2i,
+):
+  contact_count = int(0)
+
+  # Check all 8 corners of the box
+  for i in range(8):
+    corner = wp.vec3(box.size.x * 0.5, box.size.y * 0.5, box.size.z * 0.5)
+    if i % 2 == 0:
+      corner.x = -corner.x
+    if (i // 2) % 2 == 0:
+      corner.y = -corner.y
+    if i < 4:
+      corner.z = -corner.z
+
+    corner_world = box.rot * (corner) + box.pos
+
+    dist, pos = distance_point_plane(plane.normal, plane.pos, corner_world)
+
+    if dist < 0.0 and contact_count < 4:
+      write_contact(
+        d, dist, pos, make_frame(plane.normal), margin, geom_indices, worldid
+      )
+      contact_count += 1
+
+
 _collision_functions = {
   (GeomType.PLANE.value, GeomType.SPHERE.value): plane_sphere,
   (GeomType.SPHERE.value, GeomType.SPHERE.value): sphere_sphere,
   (GeomType.PLANE.value, GeomType.CAPSULE.value): plane_capsule,
+  (GeomType.PLANE.value, GeomType.BOX.value): plane_box,
   (GeomType.CAPSULE.value, GeomType.CAPSULE.value): capsule_capsule,
 }
 
