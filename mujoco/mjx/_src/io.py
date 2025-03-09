@@ -658,3 +658,109 @@ def put_data(
   d.narrowphase_candidate_group_count = wp.zeros(ngroups, dtype=wp.int32, ndim=1)
 
   return d
+
+
+def get_data_into(
+  result: mujoco.MjData,
+  mjm: mujoco.MjModel,
+  d: types.Data,
+):
+  """Gets Data from a device into an existing mujoco.MjData."""
+  if d.nworld > 1:
+    raise NotImplementedError("only nworld == 1 supported for now")
+
+  ncon = d.ncon.numpy()[0]
+  nefc = d.nefc_total.numpy()[0]
+
+  if ncon != result.ncon or nefc != result.nefc:
+    mujoco._functions._realloc_con_efc(result, ncon=ncon, nefc=nefc)
+
+  result.time = d.time
+
+  result.qpos[:] = d.qpos.numpy()[0]
+  result.qvel[:] = d.qvel.numpy()[0]
+  result.qacc_warmstart = d.qacc_warmstart.numpy()[0]
+  result.qfrc_applied = d.qfrc_applied.numpy()[0]
+  result.mocap_pos = d.mocap_pos.numpy()[0]
+  result.mocap_quat = d.mocap_quat.numpy()[0]
+  result.qacc = d.qacc.numpy()[0]
+  result.xanchor = d.xanchor.numpy()[0]
+  result.xaxis = d.xaxis.numpy()[0]
+  result.xmat = d.xmat.numpy().reshape((-1, 9))
+  result.xpos = d.xpos.numpy()[0]
+  result.xquat = d.xquat.numpy()[0]
+  result.xipos = d.xipos.numpy()[0]
+  result.ximat = d.ximat.numpy().reshape((-1, 9))
+  result.subtree_com = d.subtree_com.numpy()[0]
+  result.geom_xpos = d.geom_xpos.numpy()[0]
+  result.geom_xmat = d.geom_xmat.numpy().reshape((-1, 9))
+  result.site_xpos = d.site_xpos.numpy()[0]
+  result.site_xmat = d.site_xmat.numpy().reshape((-1, 9))
+  result.cinert = d.cinert.numpy()[0]
+  result.cdof = d.cdof.numpy()[0]
+  result.crb = d.crb.numpy()[0]
+  result.qLDiagInv = d.qLDiagInv.numpy()[0]
+  result.ctrl = d.ctrl.numpy()[0]
+  result.actuator_velocity = d.actuator_velocity.numpy()[0]
+  result.actuator_force = d.actuator_force.numpy()[0]
+  result.actuator_length = d.actuator_length.numpy()[0]
+  mujoco.mju_dense2sparse(
+    result.actuator_moment,
+    d.actuator_moment.numpy()[0],
+    result.moment_rownnz,
+    result.moment_rowadr,
+    result.moment_colind,
+  )
+  result.cvel = d.cvel.numpy()[0]
+  result.cdof_dot = d.cdof_dot.numpy()[0]
+  result.qfrc_bias = d.qfrc_bias.numpy()[0]
+  result.qfrc_passive = d.qfrc_passive.numpy()[0]
+  result.qfrc_spring = d.qfrc_spring.numpy()[0]
+  result.qfrc_damper = d.qfrc_damper.numpy()[0]
+  result.qfrc_actuator = d.qfrc_actuator.numpy()[0]
+  result.qfrc_smooth = d.qfrc_smooth.numpy()[0]
+  result.qfrc_constraint = d.qfrc_constraint.numpy()[0]
+  result.qacc_smooth = d.qacc_smooth.numpy()[0]
+  result.act = d.act.numpy()[0]
+  result.act_dot = d.act_dot.numpy()[0]
+
+  result.contact.dist[:] = d.contact.dist.numpy()[:ncon]
+  result.contact.pos[:] = d.contact.pos.numpy()[:ncon]
+  result.contact.frame[:] = d.contact.frame.numpy()[:ncon].reshape((-1, 9))
+  result.contact.includemargin[:] = d.contact.includemargin.numpy()[:ncon]
+  result.contact.friction[:] = d.contact.friction.numpy()[:ncon]
+  result.contact.solref[:] = d.contact.solref.numpy()[:ncon]
+  result.contact.solreffriction[:] = d.contact.solreffriction.numpy()[:ncon]
+  result.contact.solimp[:] = d.contact.solimp.numpy()[:ncon]
+  result.contact.dim[:] = d.contact.dim.numpy()[:ncon]
+  result.contact.efc_address[:] = d.contact.efc_address.numpy()[:ncon]
+
+  if support.is_sparse(mjm):
+    result.qM[:] = d.qM.numpy()[0, 0]
+    result.qLD[:] = d.qLD.numpy()[0, 0]
+    # TODO(team): set efc_J after fix to _realloc_con_efc lands
+    # efc_J = d.efc_J.numpy()[0, :nefc]
+    # mujoco.mju_dense2sparse(
+    #   result.efc_J, efc_J, result.efc_J_rownnz, result.efc_J_rowadr, result.efc_J_colind
+    # )
+  else:
+    qM = d.qM.numpy()
+    qLD = d.qLD.numpy()
+    adr = 0
+    for i in range(mjm.nv):
+      j = i
+      while j >= 0:
+        result.qM[adr] = qM[0, i, j]
+        result.qLD[adr] = qLD[0, i, j]
+        j = mjm.dof_parentid[j]
+        adr += 1
+    # TODO(team): set efc_J after fix to _realloc_con_efc lands
+    # if nefc > 0:
+    #   result.efc_J[:nefc * mjm.nv] = d.efc_J.numpy()[:nefc].flatten()
+  result.efc_D[:] = d.efc_D.numpy()[:nefc]
+  result.efc_pos[:] = d.efc_pos.numpy()[:nefc]
+  result.efc_aref[:] = d.efc_aref.numpy()[:nefc]
+  result.efc_force[:] = d.efc_force.numpy()[:nefc]
+  result.efc_margin[:] = d.efc_margin.numpy()[:nefc]
+
+  # TODO: other efc_ fields, anything else missing

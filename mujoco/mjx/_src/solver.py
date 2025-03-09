@@ -690,6 +690,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   wp.launch(_jaref, dim=(d.njmax,), inputs=[d, ctx])
 
 
+@event_scope
 def solve(m: types.Model, d: types.Data):
   """Finds forces that satisfy constraints."""
 
