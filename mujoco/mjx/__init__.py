@@ -30,6 +30,7 @@ from ._src.forward import fwd_position as fwd_position
 from ._src.forward import fwd_velocity as fwd_velocity
 from ._src.forward import implicit as implicit
 from ._src.forward import step as step
+from ._src.io import get_data_into as get_data_into
 from ._src.io import make_data as make_data
 from ._src.io import put_data as put_data
 from ._src.io import put_model as put_model
