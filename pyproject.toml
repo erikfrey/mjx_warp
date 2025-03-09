@@ -3,16 +3,16 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name="mujoco-mjx"
+name="mujoco-warp"
 version = "3.2.7"
 authors = [
     {name = "Google DeepMind", email = "mujoco@deepmind.com"},
 ]
-description = "MuJoCo XLA (MJX)"
+description = "MuJoCo Warp (MJWarp)"
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "Apache License 2.0"}
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
@@ -28,20 +28,19 @@ requires-python = ">=3.9"
 dependencies = [
     "absl-py",
     "etils[epath]",
-    "mujoco>=3.2.7",
+    "mujoco==3.2.7",
     "pytest",
-    "trimesh",
     "warp-lang",
 ]
 
 [project.scripts]
-mjx-testspeed = "mujoco.mjx.testspeed:main"
-mjx-viewer = "mujoco.mjx.viewer:main"
+mjw-testspeed = "mujoco_warp.testspeed:main"
+mjw-viewer = "mujoco_warp.viewer:main"
 
 [project.urls]
-Homepage = "https://github.com/google-deepmind/mujoco/tree/main/mjx"
+Homepage = "https://github.com/google-deepmind/mujoco_warp"
 Documentation = "https://mujoco.readthedocs.io/en/3.2.8"
-Repository = "https://github.com/google-deepmind/mujoco/tree/main/mjx"
+Repository = "https://github.com/google-deepmind/mujoco_warp"
 Changelog = "https://mujoco.readthedocs.io/en/3.2.8/changelog.html"
 
 [tool.isort]

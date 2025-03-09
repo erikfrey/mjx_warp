@@ -1,4 +1,4 @@
-# mjWarp
+# MJWarp
 
 MuJoCo implemented in Warp.
 
@@ -13,7 +13,7 @@ pip install --upgrade pip
 pip install -e .
 ```
 
-During early development mjWarp is on the bleeding edge - you should install warp nightly:
+During early development MJWarp is on the bleeding edge - you should install warp nightly:
 
 ```
 pip install warp-lang --pre --upgrade -f https://pypi.nvidia.com/warp-lang/
@@ -32,13 +32,13 @@ Should print out something like `XX passed in XX.XXs` at the end!
 Benchmark as follows:
 
 ```bash
-mjx-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192
+mjw-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192
 ```
 
 To get a full trace of the physics steps (e.g. timings of the subcomponents) run the following:
 
 ```bash
-mjx-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192 --event_trace=True
+mjw-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192 --event_trace=True
 ```
 
 `humanoid.xml` has been carefully optimized for MJX in the following ways:
