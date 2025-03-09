@@ -344,6 +344,7 @@ def group_contacts_by_type_kernel(
   d: Data,
 ):
   worldid, tid = wp.tid()
+
   if tid >= d.broadphase_result_count[worldid]:
     return
 
@@ -490,16 +491,28 @@ def nxn_broadphase(m: Model, d: Data):
     margin2 = m.geom_margin[geom2]
     pos1 = d.geom_xpos[worldid, geom1]
     pos2 = d.geom_xpos[worldid, geom2]
+    xmat1 = d.geom_xmat[worldid, geom1]
+    xmat2 = d.geom_xmat[worldid, geom2]
     size1 = m.geom_rbound[geom1]
     size2 = m.geom_rbound[geom2]
 
     bound = size1 + size2 + wp.max(margin1, margin2)
     dif = pos2 - pos1
-    sphere_filter = wp.dot(dif, dif) <= bound * bound
 
+    if size1 != 0.0 and size2 != 0.0:
+      # neither geom is a plane
+      dist_sq = wp.dot(dif, dif)
+    elif size1 == 0.0:
+      # geom1 is a plane
+      dist_sq = wp.dot(dif, wp.vec3(xmat1[0, 2], xmat1[1, 2], xmat1[2, 2]))
+    else:
+      # geom2 is a plane
+      dist_sq = wp.dot(-dif, wp.vec3(xmat2[0, 2], xmat2[1, 2], xmat2[2, 2]))
+
+    bounds_filter = dist_sq <= bound * bound
     geom_filter = _geom_filter(m, geom1, geom2, filterparent)
 
-    if sphere_filter and geom_filter:
+    if bounds_filter and geom_filter:
       pairid = wp.atomic_add(d.broadphase_result_count, 0, 1)
       d.broadphase_pairs[worldid, pairid] = _geom_pair(m, geom1, geom2)
 
