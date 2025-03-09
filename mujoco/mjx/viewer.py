@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""An example integration of MJX with the MuJoCo viewer."""
+"""An example integration of MJWarp with the MuJoCo viewer."""
 
 import logging
 import time
@@ -46,7 +46,7 @@ def key_callback(key: int) -> None:
 
 
 def _main(argv: Sequence[str]) -> None:
-  """Launches MuJoCo passive viewer fed by MJX."""
+  """Launches MuJoCo passive viewer fed by MJWarp."""
   if len(argv) > 1:
     raise app.UsageError("Too many command-line arguments.")
 
