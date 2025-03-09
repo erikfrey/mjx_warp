@@ -1,0 +1,59 @@
+<mujoco>
+  <worldbody>
+    <body>
+      <freejoint/>
+      <geom type="sphere" size="0.1"/>
+    </body>
+    <body>
+      <freejoint/>
+      <geom type="sphere" size="0.1"/>
+    </body>
+    <body>
+      <freejoint/>
+      <geom type="capsule" size="0.1 0.1"/>
+    </body>
+    <body>
+      <freejoint/>
+      <geom type="sphere" size="0.1"/>
+    </body>
+
+    <body>
+      <freejoint/>
+      <!-- self collision -->
+      <geom type="sphere" size="0.1"/>
+      <geom type="sphere" size="0.1"/>
+      <!-- parent-child self collision -->
+      <body>
+        <geom type="sphere" size="0.1"/>
+        <joint type="hinge"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <keyframe>
+    <key qpos='0 0 0 1 0 0 0
+               1 0 0 1 0 0 0
+               2 0 0 1 0 0 0
+               3 0 0 1 0 0 0
+               4 0 0 1 0 0 0
+               0'/>
+    <key qpos='0 0 0 1 0 0 0
+               .05 0 0 1 0 0 0
+               2 0 0 1 0 0 0
+               3 0 0 1 0 0 0
+               4 0 0 1 0 0 0 
+               0'/>
+    <key qpos='0 0 0 1 0 0 0
+               .01 0 0 1 0 0 0
+               .02 0 0 1 0 0 0
+               3 0 0 1 0 0 0
+               4 0 0 1 0 0 0 
+               0'/>
+    <key qpos='0 0 0 1 0 0 0
+               1 0 0 1 0 0 0
+               2 0 0 1 0 0 0
+               2 0 0 1 0 0 0
+               4 0 0 1 0 0 0 
+               0'/>
+  </keyframe>
+</mujoco>
