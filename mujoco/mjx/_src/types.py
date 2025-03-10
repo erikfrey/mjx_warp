@@ -292,6 +292,7 @@ class Model:
   geom_bodyid: wp.array(dtype=wp.int32, ndim=1)
   geom_conaffinity: wp.array(dtype=wp.int32, ndim=1)
   geom_contype: wp.array(dtype=wp.int32, ndim=1)
+  geom_condim: wp.array(dtype=wp.int32, ndim=1)
   geom_pos: wp.array(dtype=wp.vec3, ndim=1)
   geom_quat: wp.array(dtype=wp.quat, ndim=1)
   geom_size: wp.array(dtype=wp.vec3, ndim=1)

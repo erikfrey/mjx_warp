@@ -17,25 +17,40 @@
 import mujoco
 from mujoco import mjx
 import numpy as np
+from absl.testing import absltest
 from absl.testing import parameterized
 
 
-class ConvexTest(parameterized.TestCase):
-  """Tests the convex contact functions."""
+class PrimitiveTest(parameterized.TestCase):
+  """Tests the primtive contact functions."""
 
-  _BOX_PLANE = """
+  _MJCFS = {
+    "plane_sphere": """
         <mujoco>
           <worldbody>
             <geom size="40 40 40" type="plane"/>
-            <body pos="0 0 0.7" euler="45 0 0">
+            <body pos="0 0 0.2" euler="45 0 0">
               <freejoint/>
-              <geom size="0.5 0.5 0.5" type="box"/>
+              <geom size="0.5" type="sphere"/>
             </body>
           </worldbody>
         </mujoco>
-        """
-
-  _CAPSULE_CAPSULE = """
+        """,
+    "sphere_sphere": """
+        <mujoco>
+          <worldbody>
+            <body>
+              <joint type="free"/>
+              <geom pos="0 0 0" size="0.2" type="sphere"/>
+            </body>
+            <body >
+              <joint type="free"/>
+              <geom pos="0 0.3 0" size="0.11" type="sphere"/>
+            </body>
+          </worldbody>
+        </mujoco>
+        """,
+    "capsule_capsule": """
         <mujoco model="two_capsules">
           <worldbody>
             <body>
@@ -50,40 +65,44 @@ class ConvexTest(parameterized.TestCase):
             </body>
           </worldbody>
         </mujoco>
-        """
-
-  _SPHERE_SPHERE = """
+        """,
+    "plane_capsule": """
         <mujoco>
           <worldbody>
-            <body>
-              <joint type="free"/>
-              <geom pos="0 0 0" size="0.2" type="sphere"/>
-            </body>
-            <body >
-              <joint type="free"/>
-              <geom pos="0 0.3 0" size="0.11" type="sphere"/>
+            <geom size="40 40 40" type="plane"/>
+            <body pos="0 0 0.0" euler="30 30 0">
+              <freejoint/>
+              <geom size="0.05 0.05" type="capsule"/>
             </body>
           </worldbody>
         </mujoco>
-        """
+        """,
+  }
 
   @parameterized.parameters(
-    (_BOX_PLANE),
-    (_SPHERE_SPHERE),
-    (_CAPSULE_CAPSULE),
+    "plane_sphere",
+    "sphere_sphere",
+    "plane_capsule",
+    "capsule_capsule",
   )
-  def test_convex_collision(self, xml_string):
-    """Tests convex collision with different geometries."""
-    m = mujoco.MjModel.from_xml_string(xml_string)
+  def test_contact(self, name):
+    """Tests contact calculation with different collision functions."""
+    m = mujoco.MjModel.from_xml_string(self._MJCFS[name])
     d = mujoco.MjData(m)
     mujoco.mj_forward(m, d)
     mx = mjx.put_model(m)
     dx = mjx.put_data(m, d)
     mjx.collision(mx, dx)
-    mujoco.mj_step(m, d)
-    actual_dist = dx.contact.dist.numpy()[0]
-    actual_pos = dx.contact.pos.numpy()[0, :]
-    actual_frame = dx.contact.frame.numpy()[0].flatten()
-    np.testing.assert_array_almost_equal(actual_dist, d.contact.dist[0], 4)
-    np.testing.assert_array_almost_equal(actual_pos, d.contact.pos[0], 4)
-    np.testing.assert_array_almost_equal(actual_frame, d.contact.frame[0], 4)
+    mujoco.mj_collision(m, d)
+    self.assertEqual(d.ncon, dx.ncon.numpy()[0])
+    for i in range(d.ncon):
+      actual_dist = dx.contact.dist.numpy()[i]
+      actual_pos = dx.contact.pos.numpy()[i, :]
+      actual_frame = dx.contact.frame.numpy()[i].flatten()
+      np.testing.assert_array_almost_equal(actual_dist, d.contact.dist[i], 4)
+      np.testing.assert_array_almost_equal(actual_pos, d.contact.pos[i], 4)
+      np.testing.assert_array_almost_equal(actual_frame, d.contact.frame[i], 4)
+
+
+if __name__ == "__main__":
+  absltest.main()

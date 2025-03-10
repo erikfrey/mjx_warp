@@ -248,6 +248,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.geom_bodyid = wp.array(mjm.geom_bodyid, dtype=wp.int32, ndim=1)
   m.geom_conaffinity = wp.array(mjm.geom_conaffinity, dtype=wp.int32, ndim=1)
   m.geom_contype = wp.array(mjm.geom_contype, dtype=wp.int32, ndim=1)
+  m.geom_condim = wp.array(mjm.geom_condim, dtype=wp.int32, ndim=1)
   m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
   m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
   m.geom_size = wp.array(mjm.geom_size, dtype=wp.vec3, ndim=1)

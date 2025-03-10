@@ -22,7 +22,6 @@ from .math import make_frame
 from .math import closest_segment_to_segment_points
 from .math import normalize_with_norm
 from .support import group_key
-from .support import mat33_from_cols
 
 
 @wp.struct
@@ -279,7 +278,8 @@ def plane_capsule(
     else:
       b = wp.vec3(0.0, 0.0, 1.0)
 
-  frame = mat33_from_cols(n, b, wp.cross(n, b))
+  c = wp.cross(n, b)
+  frame = wp.mat33(n[0], n[1], n[2], b[0], b[1], b[2], c[0], c[1], c[2])
   segment = axis * cap.halfsize
 
   dist1, pos1 = _plane_sphere(n, plane.pos, cap.pos + segment, cap.radius)
