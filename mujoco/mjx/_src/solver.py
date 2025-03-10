@@ -33,7 +33,7 @@ class Context:
   beta: wp.array(dtype=wp.float32, ndim=1)
   beta_num: wp.array(dtype=wp.float32, ndim=1)
   beta_den: wp.array(dtype=wp.float32, ndim=1)
-  done: wp.array(dtype=wp.int32, ndim=1)
+  done: wp.array(dtype=bool, ndim=1)
 
 
 def _context(m: types.Model, d: types.Data) -> Context:
@@ -62,7 +62,7 @@ def _context(m: types.Model, d: types.Data) -> Context:
   ctx.beta = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.beta_num = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.beta_den = wp.empty(shape=(d.nworld,), dtype=wp.float32)
-  ctx.done = wp.empty(shape=(d.nworld,), dtype=wp.int32)
+  ctx.done = wp.empty(shape=(d.nworld,), dtype=bool)
 
   return ctx
 
@@ -73,7 +73,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
     worldid = wp.tid()
     ctx.cost[worldid] = wp.inf
     ctx.solver_niter[worldid] = 0
-    ctx.done[worldid] = 0
+    ctx.done[worldid] = False
     if grad:
       ctx.search_dot[worldid] = 0.0
 
@@ -106,7 +106,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
   wp.launch(_jaref, dim=(d.njmax, m.nv), inputs=[ctx, m, d])
 
   # Ma = qM @ qacc
-  support.mul_m(m, d, ctx.Ma, d.qacc)
+  support.mul_m(m, d, ctx.Ma, d.qacc, ctx.done)
 
   _update_constraint(m, d, ctx)
   if grad:
@@ -120,6 +120,10 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
   @kernel
   def _init_cost(ctx: Context):
     worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     ctx.prev_cost[worldid] = ctx.cost[worldid]
     ctx.cost[worldid] = 0.0
     ctx.gauss[worldid] = 0.0
@@ -132,6 +136,10 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
       return
 
     worldid = d.efc_worldid[efcid]
+
+    if ctx.done[worldid]:
+      return
+
     Jaref = ctx.Jaref[efcid]
     efc_D = d.efc_D[efcid]
 
@@ -149,13 +157,26 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
       d.efc_force[efcid] = 0.0
 
   @kernel
-  def _qfrc_constraint(d: types.Data):
+  def _zero_qfrc_constraint(d: types.Data, ctx: Context):
+    worldid, dofid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
+    d.qfrc_constraint[worldid, dofid] = 0.0
+
+  @kernel
+  def _qfrc_constraint(d: types.Data, ctx: Context):
     dofid, efcid = wp.tid()
 
     if efcid >= d.nefc_total[0]:
       return
 
     worldid = d.efc_worldid[efcid]
+
+    if ctx.done[worldid]:
+      return
+
     wp.atomic_add(
       d.qfrc_constraint[worldid],
       dofid,
@@ -165,6 +186,10 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
   @kernel
   def _gauss(ctx: Context, d: types.Data):
     worldid, dofid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     gauss_cost = (
       0.5
       * (ctx.Ma[worldid, dofid] - d.qfrc_smooth[worldid, dofid])
@@ -178,9 +203,9 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
   wp.launch(_efc_kernel, dim=(d.njmax,), inputs=[ctx, d])
 
   # qfrc_constraint = efc_J.T @ efc_force
-  d.qfrc_constraint.zero_()
+  wp.launch(_zero_qfrc_constraint, dim=(d.nworld, m.nv), inputs=[d, ctx])
 
-  wp.launch(_qfrc_constraint, dim=(m.nv, d.njmax), inputs=[d])
+  wp.launch(_qfrc_constraint, dim=(m.nv, d.njmax), inputs=[d, ctx])
 
   # gauss = 0.5 * (Ma - qfrc_smooth).T @ (qacc - qacc_smooth)
 
@@ -191,8 +216,21 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
   TILE = m.nv
 
   @kernel
+  def _zero_grad_dot(ctx: Context):
+    worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
+    ctx.grad_dot[worldid] = 0.0
+
+  @kernel
   def _grad(ctx: Context, d: types.Data):
     worldid, dofid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     grad = (
       ctx.Ma[worldid, dofid]
       - d.qfrc_smooth[worldid, dofid]
@@ -206,6 +244,10 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     @kernel
     def _zero_h_lower(m: types.Model, ctx: Context):
       worldid, elementid = wp.tid()
+
+      if ctx.done[worldid]:
+        return
+
       rowid = m.dof_tri_row[elementid]
       colid = m.dof_tri_col[elementid]
       ctx.h[worldid, rowid, colid] = 0.0
@@ -213,6 +255,10 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     @kernel
     def _set_h_qM_lower_sparse(m: types.Model, d: types.Data, ctx: Context):
       worldid, elementid = wp.tid()
+
+      if ctx.done[worldid]:
+        return
+
       i = m.qM_fullm_i[elementid]
       j = m.qM_fullm_j[elementid]
       ctx.h[worldid, i, j] = d.qM[worldid, 0, elementid]
@@ -222,6 +268,10 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     @kernel
     def _copy_lower_triangle(m: types.Model, d: types.Data, ctx: Context):
       worldid, elementid = wp.tid()
+
+      if ctx.done[worldid]:
+        return
+
       rowid = m.dof_tri_row[elementid]
       colid = m.dof_tri_col[elementid]
       ctx.h[worldid, rowid, colid] = d.qM[worldid, rowid, colid]
@@ -233,6 +283,11 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     if efcid >= d.nefc_total[0]:
       return
 
+    worldid = d.efc_worldid[efcid]
+
+    if ctx.done[worldid]:
+      return
+
     dofi = m.dof_tri_row[elementid]
     dofj = m.dof_tri_col[elementid]
 
@@ -241,7 +296,6 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     if efc_D == 0.0 or active == 0:
       return
 
-    worldid = d.efc_worldid[efcid]
     # TODO(team): sparse efc_J
     wp.atomic_add(
       ctx.h[worldid, dofi],
@@ -252,6 +306,10 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
   @kernel(module="unique")
   def _cholesky(ctx: Context):
     worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     mat_tile = wp.tile_load(ctx.h[worldid], shape=(TILE, TILE))
     fact_tile = wp.tile_cholesky(mat_tile)
     input_tile = wp.tile_load(ctx.grad[worldid], shape=TILE)
@@ -265,6 +323,11 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     if efcid >= d.nefc_total[0]:
       return
 
+    worldid = d.efc_worldid[efcid]
+
+    if ctx.done[worldid]:
+      return
+
     dofi = m.dof_tri_row[elementid]
     dofj = m.dof_tri_col[elementid]
 
@@ -273,14 +336,13 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     if efc_D == 0.0 or active == 0:
       return
 
-    worldid = d.efc_worldid[efcid]
     # TODO(team): sparse efc_J
     # h[worldid, dofi, dofj] += J[efcid, dofi] * J[efcid, dofj] * D[efcid]
     res = d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D
     wp.atomic_add(ctx.h[worldid, dofi], dofj, res)
 
   # grad = Ma - qfrc_smooth - qfrc_constraint
-  ctx.grad_dot.zero_()
+  wp.launch(_zero_grad_dot, dim=(d.nworld), inputs=[ctx])
 
   wp.launch(_grad, dim=(d.nworld, m.nv), inputs=[ctx, d])
 
@@ -334,9 +396,22 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   def _gtol(m: types.Model, ctx: Context):
     # TODO(team): static m?
     worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     snorm = wp.math.sqrt(ctx.search_dot[worldid])
     scale = m.stat.meaninertia * wp.float(wp.max(1, m.nv))
     ctx.gtol[worldid] = m.opt.tolerance * m.opt.ls_tolerance * snorm * scale
+
+  @kernel
+  def _zero_jv(d: types.Data, ctx: Context):
+    efcid = wp.tid()
+
+    if ctx.done[d.efc_worldid[efcid]]:
+      return
+
+    ctx.jv[efcid] = 0.0
 
   @kernel
   def _jv(d: types.Data, ctx: Context):
@@ -345,13 +420,31 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     if efcid >= d.nefc_total[0]:
       return
 
+    worldid = d.efc_worldid[efcid]
+
+    if ctx.done[worldid]:
+      return
+
     j = d.efc_J[efcid, dofid]
     search = ctx.search[d.efc_worldid[efcid], dofid]
     wp.atomic_add(ctx.jv, efcid, j * search)
 
   @kernel
+  def _zero_quad_gauss(ctx: Context):
+    worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
+    ctx.quad_gauss[worldid] = wp.vec3(0.0)
+
+  @kernel
   def _init_quad_gauss(m: types.Model, d: types.Data, ctx: Context):
     worldid, dofid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     search = ctx.search[worldid, dofid]
     quad_gauss = wp.vec3()
     quad_gauss[0] = ctx.gauss[worldid] / float(m.nv)
@@ -366,6 +459,11 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     if efcid >= d.nefc_total[0]:
       return
 
+    worldid = d.efc_worldid[efcid]
+
+    if ctx.done[worldid]:
+      return
+
     Jaref = ctx.Jaref[efcid]
     jv = ctx.jv[efcid]
     efc_D = d.efc_D[efcid]
@@ -378,6 +476,10 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   @kernel
   def _init_p0_gauss(p0: wp.array(dtype=wp.vec3), ctx: Context):
     worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     quad = ctx.quad_gauss[worldid]
     p0[worldid] = wp.vec3(quad[0], quad[1], 2.0 * quad[2])
 
@@ -388,11 +490,15 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     if efcid >= d.nefc_total[0]:
       return
 
+    worldid = d.efc_worldid[efcid]
+
+    if ctx.done[worldid]:
+      return
+
     # TODO(team): active and conditionally active constraints:
     if ctx.Jaref[efcid] >= 0.0:
       return
 
-    worldid = d.efc_worldid[efcid]
     quad = ctx.quad[efcid]
     wp.atomic_add(p0, worldid, wp.vec3(quad[0], quad[1], 2.0 * quad[2]))
 
@@ -404,6 +510,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     ctx: Context,
   ):
     worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
 
     pp0 = p0[worldid]
     alpha = -_safe_div(pp0[1], pp0[2])
@@ -423,6 +532,10 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
       return
 
     worldid = d.efc_worldid[efcid]
+
+    if ctx.done[worldid]:
+      return
+
     alpha = lo_alpha[worldid]
 
     # TODO(team): active and conditionally active constraints
@@ -436,8 +549,13 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     lo_alpha: wp.array(dtype=wp.float32),
     hi: wp.array(dtype=wp.vec3),
     hi_alpha: wp.array(dtype=wp.float32),
+    ctx: Context,
   ):
     worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     pp0 = p0[worldid]
     plo = lo[worldid]
     plo_alpha = lo_alpha[worldid]
@@ -464,7 +582,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   ):
     worldid = wp.tid()
 
-    if done[worldid]:
+    if done[worldid] or ctx.done[worldid]:
       return
 
     quad = ctx.quad_gauss[worldid]
@@ -504,7 +622,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
 
     worldid = d.efc_worldid[efcid]
 
-    if done[worldid]:
+    if done[worldid] or ctx.done[worldid]:
       return
 
     quad = ctx.quad[efcid]
@@ -544,7 +662,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   ):
     worldid = wp.tid()
 
-    if done[worldid]:
+    if done[worldid] or ctx.done[worldid]:
       return
 
     plo = lo[worldid]
@@ -607,6 +725,10 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   @kernel
   def _qacc_ma(d: types.Data, ctx: Context):
     worldid, dofid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     alpha = ctx.alpha[worldid]
     d.qacc[worldid, dofid] += alpha * ctx.search[worldid, dofid]
     ctx.Ma[worldid, dofid] += alpha * ctx.mv[worldid, dofid]
@@ -618,22 +740,27 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     if efcid >= d.nefc_total[0]:
       return
 
-    ctx.Jaref[efcid] += ctx.alpha[d.efc_worldid[efcid]] * ctx.jv[efcid]
+    worldid = d.efc_worldid[efcid]
+
+    if ctx.done[worldid]:
+      return
+
+    ctx.Jaref[efcid] += ctx.alpha[worldid] * ctx.jv[efcid]
 
   wp.launch(_gtol, dim=(d.nworld,), inputs=[m, ctx])
 
   # mv = qM @ search
-  support.mul_m(m, d, ctx.mv, ctx.search)
+  support.mul_m(m, d, ctx.mv, ctx.search, ctx.done)
 
   # jv = efc_J @ search
   # TODO(team): is there a better way of doing batched matmuls with dynamic array sizes?
-  ctx.jv.zero_()
+  wp.launch(_zero_jv, dim=(d.njmax), inputs=[d, ctx])
 
   wp.launch(_jv, dim=(d.njmax, m.nv), inputs=[d, ctx])
 
   # prepare quadratics
   # quad_gauss = [gauss, search.T @ Ma - search.T @ qfrc_smooth, 0.5 * search.T @ mv]
-  ctx.quad_gauss.zero_()
+  wp.launch(_zero_quad_gauss, dim=(d.nworld), inputs=[ctx])
 
   wp.launch(_init_quad_gauss, dim=(d.nworld, m.nv), inputs=[m, d, ctx])
 
@@ -667,7 +794,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
 
   # set the lo/hi interval bounds
 
-  wp.launch(_init_bounds, dim=(d.nworld,), inputs=[p0, lo, lo_alpha, hi, hi_alpha])
+  wp.launch(_init_bounds, dim=(d.nworld,), inputs=[p0, lo, lo_alpha, hi, hi_alpha, ctx])
 
   for _ in range(m.opt.ls_iterations):
     # note: we always launch ls_iterations kernels, but the kernels may early exit if done is true
@@ -697,11 +824,19 @@ def solve(m: types.Model, d: types.Data):
   @kernel
   def _zero_search_dot(ctx: Context):
     worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     ctx.search_dot[worldid] = 0.0
 
   @kernel
   def _search_update(ctx: Context):
     worldid, dofid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     search = -1.0 * ctx.Mgrad[worldid, dofid]
 
     if wp.static(m.opt.solver == mujoco.mjtSolver.mjSOL_CG):
@@ -713,30 +848,43 @@ def solve(m: types.Model, d: types.Data):
   @kernel
   def _done(ctx: Context, m: types.Model, solver_niter: int):
     worldid = wp.tid()
+
+    if ctx.done[worldid]:
+      return
+
     improvement = _rescale(m, ctx.prev_cost[worldid] - ctx.cost[worldid])
     gradient = _rescale(m, wp.math.sqrt(ctx.grad_dot[worldid]))
-    done = solver_niter >= m.opt.iterations
-    done = done or (improvement < m.opt.tolerance)
-    done = done or (gradient < m.opt.tolerance)
-    ctx.done[worldid] = int(done)
+    ctx.done[worldid] = (improvement < m.opt.tolerance) or (gradient < m.opt.tolerance)
 
   if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
 
     @kernel
     def _prev_grad_Mgrad(ctx: Context):
       worldid, dofid = wp.tid()
+
+      if ctx.done[worldid]:
+        return
+
       ctx.prev_grad[worldid, dofid] = ctx.grad[worldid, dofid]
       ctx.prev_Mgrad[worldid, dofid] = ctx.Mgrad[worldid, dofid]
 
     @kernel
     def _zero_beta_num_den(ctx: Context):
       worldid = wp.tid()
+
+      if ctx.done[worldid]:
+        return
+
       ctx.beta_num[worldid] = 0.0
       ctx.beta_den[worldid] = 0.0
 
     @kernel
     def _beta_num_den(ctx: Context):
       worldid, dofid = wp.tid()
+
+      if ctx.done[worldid]:
+        return
+
       prev_Mgrad = ctx.prev_Mgrad[worldid][dofid]
       wp.atomic_add(
         ctx.beta_num,
@@ -748,6 +896,10 @@ def solve(m: types.Model, d: types.Data):
     @kernel
     def _beta(ctx: Context):
       worldid = wp.tid()
+
+      if ctx.done[worldid]:
+        return
+
       ctx.beta[worldid] = wp.max(
         0.0, ctx.beta_num[worldid] / wp.max(mujoco.mjMINVAL, ctx.beta_den[worldid])
       )
@@ -780,6 +932,5 @@ def solve(m: types.Model, d: types.Data):
     wp.launch(_search_update, dim=(d.nworld, m.nv), inputs=[ctx])
 
     wp.launch(_done, dim=(d.nworld,), inputs=[ctx, m, i])
-    # TODO(team): return if all done
 
   wp.copy(d.qacc_warmstart, d.qacc)
