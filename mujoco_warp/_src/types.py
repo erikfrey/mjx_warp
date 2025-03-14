@@ -256,7 +256,7 @@ class Constraint:
   beta: wp.array(dtype=wp.float32, ndim=1)
   beta_num: wp.array(dtype=wp.float32, ndim=1)
   beta_den: wp.array(dtype=wp.float32, ndim=1)
-  done: wp.array(dtype=wp.int32, ndim=1)
+  done: wp.array(dtype=bool, ndim=1)
   # linesearch
   ls_done: wp.array(dtype=bool, ndim=1)
   p0: wp.array(dtype=wp.vec3, ndim=1)

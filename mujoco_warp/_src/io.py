@@ -346,7 +346,7 @@ def _constraint(nv: int, nworld: int, njmax: int) -> types.Constraint:
   efc.beta = wp.empty(shape=(nworld,), dtype=wp.float32)
   efc.beta_num = wp.empty(shape=(nworld,), dtype=wp.float32)
   efc.beta_den = wp.empty(shape=(nworld,), dtype=wp.float32)
-  efc.done = wp.empty(shape=(nworld,), dtype=wp.int32)
+  efc.done = wp.empty(shape=(nworld,), dtype=bool)
 
   efc.ls_done = wp.zeros(shape=(nworld,), dtype=bool)
   efc.p0 = wp.empty(shape=(nworld,), dtype=wp.vec3)
