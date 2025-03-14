@@ -480,14 +480,14 @@ class Data:
   qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)
 
   # sweep and prune broadphase arrays
-  boxes_sorted: wp.array(dtype=wp.vec3, ndim=3)
+  spheres_sorted: wp.array(dtype=wp.vec4, ndim=2)
+
   box_projections_lower: wp.array(dtype=wp.float32, ndim=2)
   box_projections_upper: wp.array(dtype=wp.float32, ndim=2)
   box_sorting_indexer: wp.array(dtype=wp.int32, ndim=2)
   ranges: wp.array(dtype=wp.int32, ndim=2)
   cumulative_sum: wp.array(dtype=wp.int32, ndim=1)
   segment_indices: wp.array(dtype=wp.int32, ndim=1)
-  dyn_geom_aabb: wp.array(dtype=wp.vec3, ndim=3)
 
   # collision driver
   collision_pair: wp.array(dtype=wp.vec2i, ndim=1)

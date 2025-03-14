@@ -464,7 +464,7 @@ def make_data(
   # the result of the broadphase gets stored in this array
 
   # internal broadphase tmp arrays
-  d.boxes_sorted = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
+  d.spheres_sorted = wp.zeros((nworld, mjm.ngeom), dtype=wp.vec4)
   d.box_projections_lower = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.float32)
   d.box_projections_upper = wp.zeros((nworld, mjm.ngeom), dtype=wp.float32)
   d.box_sorting_indexer = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.int32)
@@ -686,7 +686,7 @@ def put_data(
   # the result of the broadphase gets stored in this array
 
   # internal broadphase tmp arrays
-  d.boxes_sorted = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
+  d.spheres_sorted = wp.zeros((nworld, mjm.ngeom), dtype=wp.vec4)
   d.box_projections_lower = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.float32)
   d.box_projections_upper = wp.zeros((nworld, mjm.ngeom), dtype=wp.float32)
   d.box_sorting_indexer = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.int32)
@@ -694,7 +694,6 @@ def put_data(
   d.cumulative_sum = wp.zeros(nworld * mjm.ngeom, dtype=wp.int32)
   segment_indices_list = [i * mjm.ngeom for i in range(nworld + 1)]
   d.segment_indices = wp.array(segment_indices_list, dtype=int)
-  d.dyn_geom_aabb = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
 
   # collision driver
   d.collision_pair = wp.empty(nconmax, dtype=wp.vec2i, ndim=1)
