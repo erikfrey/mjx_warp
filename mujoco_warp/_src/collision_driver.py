@@ -201,7 +201,7 @@ def find_first_greater_than(
 
 
 @wp.kernel
-def broadphase_sweep_and_prune_prepare_kernel(
+def sap_broadphase_prepare_kernel(
   m: Model,
   d: Data,
 ):
@@ -253,9 +253,7 @@ def find_indices(
 
 
 @wp.kernel
-def broadphase_sweep_and_prune_kernel(
-  m: Model, d: Data, num_threads: int, filter_parent: bool
-):
+def sap_broadphase_kernel(m: Model, d: Data, num_threads: int, filter_parent: bool):
   threadId = wp.tid()  # Get thread ID
   if d.cumulative_sum.shape[0] > 0:
     total_num_work_packages = d.cumulative_sum[d.cumulative_sum.shape[0] - 1]
@@ -348,8 +346,8 @@ def get_contact_solver_params_kernel(
   d.contact.solimp[tid] = mix * m.geom_solimp[g1] + (1.0 - mix) * m.geom_solimp[g2]
 
 
-def broadphase_sweep_and_prune(m: Model, d: Data):
-  """Broad-phase collision detection via sweep-and-prune."""
+def sap_broadphase(m: Model, d: Data):
+  """Broadphase collision detection via sweep-and-prune."""
 
   # generate geom AABBs
   wp.launch(
@@ -431,7 +429,7 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
   )
 
   wp.launch(
-    kernel=broadphase_sweep_and_prune_prepare_kernel,
+    kernel=sap_broadphase_prepare_kernel,
     dim=(d.nworld, m.ngeom),
     inputs=[m, d],
   )
@@ -443,7 +441,7 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
   num_sweep_threads = 5 * d.nworld * m.ngeom
   filter_parent = not m.opt.disableflags & DisableBit.FILTERPARENT.value
   wp.launch(
-    kernel=broadphase_sweep_and_prune_kernel,
+    kernel=sap_broadphase_kernel,
     dim=num_sweep_threads,
     inputs=[m, d, num_sweep_threads, filter_parent],
   )
@@ -452,6 +450,7 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
 
 
 def nxn_broadphase(m: Model, d: Data):
+  """Broadphase collision detective via brute-force search."""
   filterparent = not (m.opt.disableflags & DisableBit.FILTERPARENT.value)
 
   @wp.kernel
@@ -480,8 +479,6 @@ def nxn_broadphase(m: Model, d: Data):
     xmat2 = d.geom_xmat[worldid, geom2]
     size1 = m.geom_rbound[geom1]
     size2 = m.geom_rbound[geom2]
-    type1 = m.geom_type[geom1]
-    type2 = m.geom_type[geom2]
 
     bound = size1 + size2 + wp.max(margin1, margin2)
     dif = pos2 - pos1
@@ -509,19 +506,6 @@ def nxn_broadphase(m: Model, d: Data):
   )
 
 
-###########################################################################################3
-
-
-def broadphase(m: Model, d: Data):
-  # broadphase collision
-
-  # TODO(team): determine ngeom to switch from n^2 to sap
-  if m.ngeom <= 100:
-    nxn_broadphase(m, d)
-  else:
-    broadphase_sweep_and_prune(m, d)
-
-
 def get_contact_solver_params(m: Model, d: Data):
   wp.launch(
     get_contact_solver_params_kernel,
@@ -543,7 +527,12 @@ def collision(m: Model, d: Data):
   d.ncollision.zero_()
   d.ncon.zero_()
 
-  broadphase(m, d)
+  # TODO(team): determine ngeom to switch from n^2 to sap
+  if m.ngeom <= 100:
+    nxn_broadphase(m, d)
+  else:
+    sap_broadphase(m, d)
+
   # XXX switch between collision functions and GJK/EPA here
   if True:
     from .collision_functions import narrowphase

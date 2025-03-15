@@ -15,12 +15,9 @@
 
 """Public API for MJWarp."""
 
-from ._src.collision_driver import broadphase as broadphase
-from ._src.collision_driver import (
-  broadphase_sweep_and_prune as broadphase_sweep_and_prune,
-)
 from ._src.collision_driver import collision as collision
 from ._src.collision_driver import nxn_broadphase as nxn_broadphase
+from ._src.collision_driver import sap_broadphase as sap_broadphase
 from ._src.constraint import make_constraint as make_constraint
 from ._src.forward import euler as euler
 from ._src.forward import forward as forward
