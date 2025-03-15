@@ -16,6 +16,7 @@
 import functools
 from typing import Callable, Optional
 
+import numpy as np
 import warp as wp
 from warp.context import Module
 from warp.context import get_module
@@ -178,7 +179,13 @@ def kernel_copy(dest: wp.array, src: wp.array):
     raise ValueError("only same shape copying allowed")
 
   if src.dtype != dest.dtype:
-    raise ValueError("only same dtype copying allowed")
+    if (src.dtype, dest.dtype) not in (
+      (wp.float32, np.float32),
+      (np.float32, wp.float32),
+      (wp.int32, np.int32),
+      (np.int32, wp.int32),
+    ):
+      raise ValueError(f"only same dtype copying allowed: {src.dtype} != {dest.dtype}")
 
   if src.ndim == 2 and src.dtype == wp.float32:
     kernel = _copy_2df
