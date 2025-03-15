@@ -283,7 +283,6 @@ def _safe_div(x: wp.float32, y: wp.float32) -> wp.float32:
   return x / wp.where(y != 0.0, y, types.MJ_MINVAL)
 
 
-@event_scope
 def _linesearch_iterative(m: types.Model, d: types.Data):
   @kernel
   def _gtol(m: types.Model, d: types.Data):
