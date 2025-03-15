@@ -38,6 +38,7 @@ from .types import array3df
 from .warp_util import event_scope
 from .warp_util import kernel
 from .warp_util import kernel_copy
+import functools
 
 
 def _advance(
@@ -162,6 +163,35 @@ def _advance(
   d.time = d.time + m.opt.timestep
 
 
+@functools.lru_cache(maxsize=None)
+def tile_eulerdamp_kernel(tilesize: int):
+  @kernel
+  def eulerdamp(m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int):
+    worldid, nodeid = wp.tid()
+    dofid = m.qLD_tile[leveladr + nodeid]
+    M_tile = wp.tile_load(
+      d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+    )
+    damping_tile = wp.tile_load(damping, shape=(tilesize,), offset=(dofid,))
+    damping_scaled = damping_tile * m.opt.timestep
+    qm_integration_tile = wp.tile_diag_add(M_tile, damping_scaled)
+
+    qfrc_smooth_tile = wp.tile_load(
+      d.qfrc_smooth[worldid], shape=(tilesize,), offset=(dofid,)
+    )
+    qfrc_constraint_tile = wp.tile_load(
+      d.qfrc_constraint[worldid], shape=(tilesize,), offset=(dofid,)
+    )
+
+    qfrc_tile = qfrc_smooth_tile + qfrc_constraint_tile
+
+    L_tile = wp.tile_cholesky(qm_integration_tile)
+    qacc_tile = wp.tile_cholesky_solve(L_tile, qfrc_tile)
+    wp.tile_store(d.qacc_integration[worldid], qacc_tile, offset=(dofid))
+
+  return eulerdamp
+
+
 @event_scope
 def euler(m: Model, d: Data):
   """Euler integrator, semi-implicit in velocity."""
@@ -193,43 +223,20 @@ def euler(m: Model, d: Data):
     )
 
   def eulerdamp_fused_dense(m: Model, d: Data):
-    def tile_eulerdamp(adr: int, size: int, tilesize: int):
-      @kernel
-      def eulerdamp(
-        m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
-      ):
-        worldid, nodeid = wp.tid()
-        dofid = m.qLD_tile[leveladr + nodeid]
-        M_tile = wp.tile_load(
-          d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
-        )
-        damping_tile = wp.tile_load(damping, shape=(tilesize,), offset=(dofid,))
-        damping_scaled = damping_tile * m.opt.timestep
-        qm_integration_tile = wp.tile_diag_add(M_tile, damping_scaled)
-
-        qfrc_smooth_tile = wp.tile_load(
-          d.qfrc_smooth[worldid], shape=(tilesize,), offset=(dofid,)
-        )
-        qfrc_constraint_tile = wp.tile_load(
-          d.qfrc_constraint[worldid], shape=(tilesize,), offset=(dofid,)
-        )
-
-        qfrc_tile = qfrc_smooth_tile + qfrc_constraint_tile
-
-        L_tile = wp.tile_cholesky(qm_integration_tile)
-        qacc_tile = wp.tile_cholesky_solve(L_tile, qfrc_tile)
-        wp.tile_store(d.qacc_integration[worldid], qacc_tile, offset=(dofid))
-
-      wp.launch_tiled(
-        eulerdamp, dim=(d.nworld, size), inputs=[m, d, m.dof_damping, adr], block_dim=32
-      )
-
     qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
 
     for i in range(len(qLD_tileadr)):
       beg = qLD_tileadr[i]
       end = m.qLD_tile.shape[0] if i == len(qLD_tileadr) - 1 else qLD_tileadr[i + 1]
-      tile_eulerdamp(beg, end - beg, int(qLD_tilesize[i]))
+
+      adr = beg
+      size = end - beg
+      wp.launch_tiled(
+        tile_eulerdamp_kernel(int(qLD_tilesize[i])),
+        dim=(d.nworld, size),
+        inputs=[m, d, m.dof_damping, adr],
+        block_dim=32,
+      )
 
   if not m.opt.disableflags & DisableBit.EULERDAMP.value:
     if m.opt.is_sparse:

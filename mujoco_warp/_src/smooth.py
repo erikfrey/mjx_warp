@@ -26,6 +26,7 @@ from .types import vec10
 from .warp_util import event_scope
 from .warp_util import kernel
 from .warp_util import kernel_copy
+import functools
 
 
 @event_scope
@@ -349,33 +350,39 @@ def _factor_i_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, L, D])
 
 
+@functools.lru_cache(maxsize=None)
+def cholesky_kernel(tilesize: int):
+  @kernel
+  def cholesky(m: Model, leveladr: int, M: array3df, L: array3df):
+    worldid, nodeid = wp.tid()
+    dofid = m.qLD_tile[leveladr + nodeid]
+    M_tile = wp.tile_load(M[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
+    L_tile = wp.tile_cholesky(M_tile)
+    wp.tile_store(L[worldid], L_tile, offset=(dofid, dofid))
+
+  return cholesky
+
+
 def _factor_i_dense(m: Model, d: Data, M: wp.array, L: wp.array):
   """Dense Cholesky factorizaton of inertia-like matrix M, assumed spd."""
 
   # TODO(team): develop heuristic for block dim, or make configurable
   block_dim = 32
 
-  def tile_cholesky(adr: int, size: int, tilesize: int):
-    @kernel
-    def cholesky(m: Model, leveladr: int, M: array3df, L: array3df):
-      worldid, nodeid = wp.tid()
-      dofid = m.qLD_tile[leveladr + nodeid]
-      M_tile = wp.tile_load(
-        M[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
-      )
-      L_tile = wp.tile_cholesky(M_tile)
-      wp.tile_store(L[worldid], L_tile, offset=(dofid, dofid))
-
-    wp.launch_tiled(
-      cholesky, dim=(d.nworld, size), inputs=[m, adr, M, L], block_dim=block_dim
-    )
-
   qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
 
   for i in range(len(qLD_tileadr)):
     beg = qLD_tileadr[i]
     end = m.qLD_tile.shape[0] if i == len(qLD_tileadr) - 1 else qLD_tileadr[i + 1]
-    tile_cholesky(beg, end - beg, int(qLD_tilesize[i]))
+
+    adr = beg
+    size = end - beg
+    wp.launch_tiled(
+      cholesky_kernel(int(qLD_tilesize[i])),
+      dim=(d.nworld, size),
+      inputs=[m, adr, M, L],
+      block_dim=block_dim,
+    )
 
 
 def factor_i(m: Model, d: Data, M, L, D=None):
@@ -647,34 +654,40 @@ def _solve_LD_sparse(
     wp.launch(x_acc_down, dim=(d.nworld, end - beg), inputs=[m, L, x, beg])
 
 
+@functools.lru_cache(maxsize=None)
+def cho_solve_kernel(tilesize: int):
+  @kernel
+  def cho_solve(m: Model, L: array3df, x: array2df, y: array2df, leveladr: int):
+    worldid, nodeid = wp.tid()
+    dofid = m.qLD_tile[leveladr + nodeid]
+    y_slice = wp.tile_load(y[worldid], shape=(tilesize,), offset=(dofid,))
+    L_tile = wp.tile_load(L[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
+    x_slice = wp.tile_cholesky_solve(L_tile, y_slice)
+    wp.tile_store(x[worldid], x_slice, offset=(dofid,))
+
+  return cho_solve
+
+
 def _solve_LD_dense(m: Model, d: Data, L: array3df, x: array2df, y: array2df):
   """Computes dense backsubstitution: x = inv(L'*L)*y"""
 
   # TODO(team): develop heuristic for block dim, or make configurable
   block_dim = 32
 
-  def tile_cho_solve(adr: int, size: int, tilesize: int):
-    @kernel
-    def cho_solve(m: Model, L: array3df, x: array2df, y: array2df, leveladr: int):
-      worldid, nodeid = wp.tid()
-      dofid = m.qLD_tile[leveladr + nodeid]
-      y_slice = wp.tile_load(y[worldid], shape=(tilesize,), offset=(dofid,))
-      L_tile = wp.tile_load(
-        L[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
-      )
-      x_slice = wp.tile_cholesky_solve(L_tile, y_slice)
-      wp.tile_store(x[worldid], x_slice, offset=(dofid,))
-
-    wp.launch_tiled(
-      cho_solve, dim=(d.nworld, size), inputs=[m, L, x, y, adr], block_dim=block_dim
-    )
-
   qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
 
   for i in range(len(qLD_tileadr)):
     beg = qLD_tileadr[i]
     end = m.qLD_tile.shape[0] if i == len(qLD_tileadr) - 1 else qLD_tileadr[i + 1]
-    tile_cho_solve(beg, end - beg, int(qLD_tilesize[i]))
+
+    adr = beg
+    size = end - beg
+    wp.launch_tiled(
+      cho_solve_kernel(int(qLD_tilesize[i])),
+      dim=(d.nworld, size),
+      inputs=[m, L, x, y, adr],
+      block_dim=block_dim,
+    )
 
 
 def solve_LD(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2df):

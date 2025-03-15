@@ -25,12 +25,30 @@ from .types import array2df
 from .types import array3df
 from .warp_util import event_scope
 from .warp_util import kernel
+import functools
 
 
 def is_sparse(m: mujoco.MjModel):
   if m.opt.jacobian == mujoco.mjtJacobian.mjJAC_AUTO:
     return m.nv >= 60
   return m.opt.jacobian == mujoco.mjtJacobian.mjJAC_SPARSE
+
+
+@functools.lru_cache(maxsize=None)
+def tile_mul_kernel(tilesize: int):
+  @kernel
+  def mul(m: Model, d: Data, leveladr: int, res: array3df, vec: array3df):
+    worldid, nodeid = wp.tid()
+    dofid = m.qLD_tile[leveladr + nodeid]
+    qM_tile = wp.tile_load(
+      d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+    )
+    vec_tile = wp.tile_load(vec[worldid], shape=(tilesize, 1), offset=(dofid, 0))
+    res_tile = wp.tile_zeros(shape=(tilesize, 1), dtype=wp.float32)
+    wp.tile_matmul(qM_tile, vec_tile, res_tile)
+    wp.tile_store(res[worldid], res_tile, offset=(dofid, 0))
+
+  return mul
 
 
 @event_scope
@@ -46,20 +64,9 @@ def mul_m(
 
     def tile_mul(adr: int, size: int, tilesize: int):
       # TODO(team): speed up kernel compile time (14s on 2023 Macbook Pro)
-      @kernel
-      def mul(m: Model, d: Data, leveladr: int, res: array3df, vec: array3df):
-        worldid, nodeid = wp.tid()
-        dofid = m.qLD_tile[leveladr + nodeid]
-        qM_tile = wp.tile_load(
-          d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
-        )
-        vec_tile = wp.tile_load(vec[worldid], shape=(tilesize, 1), offset=(dofid, 0))
-        res_tile = wp.tile_zeros(shape=(tilesize, 1), dtype=wp.float32)
-        wp.tile_matmul(qM_tile, vec_tile, res_tile)
-        wp.tile_store(res[worldid], res_tile, offset=(dofid, 0))
 
       wp.launch_tiled(
-        mul,
+        tile_mul_kernel(tilesize),
         dim=(d.nworld, size),
         inputs=[
           m,
